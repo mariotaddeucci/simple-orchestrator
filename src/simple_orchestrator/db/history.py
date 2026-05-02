@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Self
 
 import aiosqlite
 
-from ..models.session import SessionRecord
+from simple_orchestrator.models.session import SessionRecord
 
 
 class SessionHistoryDB:
@@ -10,7 +11,7 @@ class SessionHistoryDB:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
 
-    async def __aenter__(self) -> "SessionHistoryDB":
+    async def __aenter__(self) -> Self:
         await self.connect()
         return self
 
@@ -108,23 +109,23 @@ class SessionHistoryDB:
         assert self._conn
         conditions: list[str] = []
         params: list[str] = []
-        if vendor:
+        if vendor is not None:
             conditions.append("vendor = ?")
             params.append(vendor)
-        if status:
+        if status is not None:
             conditions.append("status = ?")
             params.append(status)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        async with self._conn.execute(
-            f"SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
-            f"FROM sessions {where} ORDER BY started_at DESC",
-            params,
-        ) as cursor:
+        query = (
+            "SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
+            "FROM sessions " + where + " ORDER BY started_at DESC"
+        )
+        async with self._conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_record(r) for r in rows]
 
 
-def _row_to_record(row: tuple) -> SessionRecord:
+def _row_to_record(row: aiosqlite.Row) -> SessionRecord:
     return SessionRecord(
         id=row[0],
         vendor=row[1],

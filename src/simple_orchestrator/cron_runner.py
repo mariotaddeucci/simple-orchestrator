@@ -1,7 +1,8 @@
 import asyncio
+import contextlib
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from croniter import croniter
 
@@ -53,10 +54,8 @@ class CronRunner:
         self._running = False
         if self._loop_task and not self._loop_task.done():
             self._loop_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._loop_task
-            except asyncio.CancelledError:
-                pass
 
     async def run_forever(self) -> None:
         """Start the cron loop and block until cancelled."""
@@ -71,7 +70,7 @@ class CronRunner:
             await asyncio.sleep(self._check_interval)
 
     async def _tick(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for cron_cfg in self._settings.crons:
             await self._check_cron(cron_cfg, now)
 
@@ -83,7 +82,7 @@ class CronRunner:
             should_run = True
         else:
             ci = croniter(cron_cfg.cron, last_run.replace(tzinfo=None))
-            next_run = ci.get_next(datetime).replace(tzinfo=timezone.utc)
+            next_run = ci.get_next(datetime).replace(tzinfo=UTC)
             should_run = now >= next_run
 
         if not should_run:

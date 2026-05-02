@@ -1,22 +1,23 @@
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from claude_agent_sdk import query
 from claude_agent_sdk.types import (
     AgentDefinition,
     ClaudeAgentOptions,
     McpHttpServerConfig,
+    McpServerConfig,
     McpSSEServerConfig,
     McpStdioServerConfig,
 )
 
-from ..db.history import SessionHistoryDB
-from ..models.agent import AgentConfig
-from ..models.mcp import McpConfig, McpHttpConfig, McpSseConfig, McpStdioConfig
-from ..models.model import ModelInfo
-from ..models.session import SessionConfig
-from ..models.skill import SkillConfig
-from .base import BaseVendor
+from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.models.agent import AgentConfig
+from simple_orchestrator.models.mcp import McpConfig, McpHttpConfig, McpSseConfig, McpStdioConfig
+from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator.models.session import SessionConfig
+from simple_orchestrator.models.skill import SkillConfig
+from simple_orchestrator.vendors.base import BaseVendor
 
 _CLAUDE_MODELS = [
     ModelInfo(id="claude-opus-4-7", name="Claude Opus 4.7", vendor="claude_code"),
@@ -46,15 +47,13 @@ class ClaudeCodeVendor(BaseVendor):
 
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
         options = self._build_options(config, session_id=session_id)
-        async for _ in await query(prompt=config.prompt, options=options):
+        async for _ in query(prompt=config.prompt, options=options):
             pass
 
     async def _vendor_kill(self, session_id: str) -> None:
         pass
 
-    def _build_options(
-        self, config: SessionConfig, session_id: str | None = None
-    ) -> ClaudeAgentOptions:
+    def _build_options(self, config: SessionConfig, session_id: str | None = None) -> ClaudeAgentOptions:
         all_agents = {**config.agents, **config.subagents}
         return ClaudeAgentOptions(
             model=config.model,
@@ -72,8 +71,8 @@ class ClaudeCodeVendor(BaseVendor):
 
 def _map_mcp_servers(
     mcp_servers: dict[str, McpConfig],
-) -> dict[str, McpStdioServerConfig | McpSSEServerConfig | McpHttpServerConfig]:
-    result: dict[str, McpStdioServerConfig | McpSSEServerConfig | McpHttpServerConfig] = {}
+) -> dict[str, McpServerConfig]:
+    result: dict[str, McpServerConfig] = {}
     for name, cfg in mcp_servers.items():
         if isinstance(cfg, McpStdioConfig):
             entry: McpStdioServerConfig = {"command": cfg.command}
@@ -83,9 +82,9 @@ def _map_mcp_servers(
                 entry["env"] = cfg.env
             result[name] = entry
         elif isinstance(cfg, McpSseConfig):
-            result[name] = McpSSEServerConfig(url=cfg.url)
+            result[name] = McpSSEServerConfig(type="sse", url=cfg.url)
         elif isinstance(cfg, McpHttpConfig):
-            result[name] = McpHttpServerConfig(url=cfg.url)
+            result[name] = McpHttpServerConfig(type="http", url=cfg.url)
     return result
 
 
@@ -102,7 +101,7 @@ def _map_agents(agents: dict[str, AgentConfig]) -> dict[str, AgentDefinition]:
             disallowedTools=cfg.disallowed_tools,
             model=cfg.model,
             skills=cfg.skills,
-            mcpServers=cfg.mcp_servers,
+            mcpServers=cast(list[str | dict[str, Any]] | None, cfg.mcp_servers),
             initialPrompt=cfg.initial_prompt,
             maxTurns=cfg.max_turns,
             background=cfg.background,

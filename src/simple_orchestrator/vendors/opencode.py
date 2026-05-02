@@ -1,12 +1,13 @@
+import contextlib
 from collections.abc import AsyncIterator
 from typing import Any
 
 from opencode_ai import AsyncOpencode
 
-from ..db.history import SessionHistoryDB
-from ..models.model import ModelInfo
-from ..models.session import SessionConfig
-from .base import BaseVendor
+from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator.models.session import SessionConfig
+from simple_orchestrator.vendors.base import BaseVendor
 
 
 class OpenCodeVendor(BaseVendor):
@@ -64,9 +65,7 @@ class OpenCodeVendor(BaseVendor):
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
         async with AsyncOpencode(base_url=self._base_url) as client:
             vendor_session = await client.session.create()
-            await self._db.update_status(
-                session_id, "running", vendor_session_id=vendor_session.id
-            )
+            await self._db.update_status(session_id, "running", vendor_session_id=vendor_session.id)
             self._active_handles[session_id] = (client, vendor_session.id)
 
             model_id = config.model or self._model_id
@@ -83,7 +82,5 @@ class OpenCodeVendor(BaseVendor):
         if not handle:
             return
         client, vendor_session_id = handle
-        try:
+        with contextlib.suppress(Exception):
             await client.session.abort(vendor_session_id)
-        except Exception:
-            pass

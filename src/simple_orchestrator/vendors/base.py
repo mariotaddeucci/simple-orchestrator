@@ -1,14 +1,15 @@
 import asyncio
+import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ulid import ULID
 
-from ..db.history import SessionHistoryDB
-from ..models.model import ModelInfo
-from ..models.session import SessionConfig, SessionRecord
+from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator.models.session import SessionConfig, SessionRecord
 
 
 class BaseVendor(ABC):
@@ -16,6 +17,7 @@ class BaseVendor(ABC):
         self._db = db
         self._active_tasks: dict[str, asyncio.Task[None]] = {}
         self._active_handles: dict[str, Any] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     @property
     @abstractmethod
@@ -28,7 +30,7 @@ class BaseVendor(ABC):
             vendor=self.vendor_name,
             prompt=config.prompt,
             workdir=config.workdir,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status="running",
         )
         await self._db.save(record)
@@ -38,21 +40,23 @@ class BaseVendor(ABC):
             name=f"{self.vendor_name}-{session_id}",
         )
         self._active_tasks[session_id] = task
-        task.add_done_callback(
-            lambda t: asyncio.create_task(self._on_done(session_id, t))
-        )
+
+        def _on_done_callback(t: asyncio.Task[None]) -> None:
+            bg = asyncio.create_task(self._on_done(session_id, t))
+            self._background_tasks.add(bg)
+            bg.add_done_callback(self._background_tasks.discard)
+
+        task.add_done_callback(_on_done_callback)
         return session_id
 
     async def kill(self, session_id: str) -> None:
         task = self._active_tasks.pop(session_id, None)
         if task and not task.done():
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
-            except (asyncio.CancelledError, Exception):
-                pass
         await self._vendor_kill(session_id)
-        await self._db.update_status(session_id, "killed", datetime.now(timezone.utc))
+        await self._db.update_status(session_id, "killed", datetime.now(UTC))
 
     @abstractmethod
     async def list_models(self) -> list[ModelInfo]:
@@ -60,9 +64,7 @@ class BaseVendor(ABC):
         ...
 
     @abstractmethod
-    async def execute_session(
-        self, config: SessionConfig
-    ) -> AsyncIterator[Any]:
+    async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]:
         """Stream vendor events for a session without persisting to DB."""
         ...
 
@@ -80,10 +82,8 @@ class BaseVendor(ABC):
         """Block until a running session completes. Safe to call after run()."""
         task = self._active_tasks.get(session_id)
         if task:
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
-            except (asyncio.CancelledError, Exception):
-                pass
         return await self._db.get(session_id)
 
     async def _on_done(self, session_id: str, task: asyncio.Task[None]) -> None:
@@ -92,4 +92,4 @@ class BaseVendor(ABC):
             return
         exc = task.exception()
         status = "failed" if exc else "completed"
-        await self._db.update_status(session_id, status, datetime.now(timezone.utc))
+        await self._db.update_status(session_id, status, datetime.now(UTC))

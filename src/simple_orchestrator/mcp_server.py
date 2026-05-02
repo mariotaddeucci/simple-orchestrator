@@ -20,6 +20,7 @@ Or globally (all agents):
 """
 
 import json
+from functools import cache
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -37,22 +38,18 @@ mcp = FastMCP(
     ),
 )
 
-_settings: OrchestratorSettings | None = None
 
-
+@cache
 def _get_settings() -> OrchestratorSettings:
-    global _settings
-    if _settings is None:
-        _settings = OrchestratorSettings()
-    return _settings
+    return OrchestratorSettings()
 
 
 def _prompt_description(prompt: str) -> str:
     """Extract a short description from a prompt string."""
-    for line in prompt.splitlines():
-        line = line.strip().lstrip("#").strip()
-        if line:
-            return line[:200]
+    for raw_line in prompt.splitlines():
+        stripped = raw_line.strip().lstrip("#").strip()
+        if stripped:
+            return stripped[:200]
     return ""
 
 
@@ -60,7 +57,10 @@ def _prompt_description(prompt: str) -> str:
 async def list_agents(
     vendor: Annotated[str | None, Field(description="Filter by vendor: claude_code, opencode, github_copilot")] = None,
 ) -> str:
-    """List all available agents that can process tasks. Returns id, name, vendor, workdir, and a description extracted from the agent's prompt."""
+    """List all available agents that can process tasks.
+
+    Returns id, name, vendor, workdir, and a description extracted from the agent's prompt.
+    """
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         db_agents = await db.list_agents(vendor=vendor)
@@ -75,51 +75,59 @@ async def list_agents(
             prompt_text = agent_settings.resolve_prompt()
         except Exception:
             prompt_text = agent_settings.prompt or ""
-        results.append({
-            "id": agent_id,
-            "name": agent_settings.name,
-            "nickname": agent_settings.nickname,
-            "vendor": agent_settings.vendor,
-            "model": agent_settings.model,
-            "workdir": agent_settings.workdir,
-            "description": _prompt_description(prompt_text),
-            "source": "config",
-        })
+        results.append(
+            {
+                "id": agent_id,
+                "name": agent_settings.name,
+                "nickname": agent_settings.nickname,
+                "vendor": agent_settings.vendor,
+                "model": agent_settings.model,
+                "workdir": agent_settings.workdir,
+                "description": _prompt_description(prompt_text),
+                "source": "config",
+            }
+        )
         seen_ids.add(agent_id)
 
     for agent in db_agents:
         if agent.id in seen_ids:
             continue
-        results.append({
-            "id": agent.id,
-            "name": agent.name,
-            "nickname": agent.nickname,
-            "vendor": agent.vendor,
-            "model": agent.model,
-            "workdir": agent.workdir,
-            "description": _prompt_description(agent.prompt),
-            "source": "database",
-        })
+        results.append(
+            {
+                "id": agent.id,
+                "name": agent.name,
+                "nickname": agent.nickname,
+                "vendor": agent.vendor,
+                "model": agent.model,
+                "workdir": agent.workdir,
+                "description": _prompt_description(agent.prompt),
+                "source": "database",
+            }
+        )
 
     return json.dumps(results, indent=2, default=str)
 
 
 @mcp.tool()
 async def enqueue_task(
-    agent_id: Annotated[str, Field(description="ID of the agent to handle this task (use list_agents to find valid IDs)")],
+    agent_id: Annotated[
+        str, Field(description="ID of the agent to handle this task (use list_agents to find valid IDs)")
+    ],
     prompt: Annotated[str, Field(description="Full task description for the agent")],
 ) -> str:
     """Add a task to the queue for a specific agent. Returns the task ID and initial status."""
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         item = await db.enqueue(agent_id, prompt)
-    return json.dumps({
-        "task_id": item.id,
-        "agent_id": item.agent_id,
-        "agent_nickname": item.agent_nickname,
-        "status": item.status,
-        "created_at": item.created_at.isoformat(),
-    })
+    return json.dumps(
+        {
+            "task_id": item.id,
+            "agent_id": item.agent_id,
+            "agent_nickname": item.agent_nickname,
+            "status": item.status,
+            "created_at": item.created_at.isoformat(),
+        }
+    )
 
 
 @mcp.tool()
@@ -138,17 +146,19 @@ async def list_tasks(
     results = []
     for item in items:
         prompt_preview = item.prompt[:150] + "…" if len(item.prompt) > 150 else item.prompt
-        results.append({
-            "task_id": item.id,
-            "agent_id": item.agent_id,
-            "agent_nickname": item.agent_nickname,
-            "prompt_preview": prompt_preview,
-            "status": item.status,
-            "session_id": item.session_id,
-            "created_at": item.created_at.isoformat(),
-            "started_at": item.started_at.isoformat() if item.started_at else None,
-            "ended_at": item.ended_at.isoformat() if item.ended_at else None,
-        })
+        results.append(
+            {
+                "task_id": item.id,
+                "agent_id": item.agent_id,
+                "agent_nickname": item.agent_nickname,
+                "prompt_preview": prompt_preview,
+                "status": item.status,
+                "session_id": item.session_id,
+                "created_at": item.created_at.isoformat(),
+                "started_at": item.started_at.isoformat() if item.started_at else None,
+                "ended_at": item.ended_at.isoformat() if item.ended_at else None,
+            }
+        )
     return json.dumps(results, indent=2)
 
 
@@ -164,17 +174,19 @@ async def get_task(
     if not item:
         return json.dumps({"error": f"Task {task_id!r} not found"})
 
-    return json.dumps({
-        "task_id": item.id,
-        "agent_id": item.agent_id,
-        "agent_nickname": item.agent_nickname,
-        "prompt": item.prompt,
-        "status": item.status,
-        "session_id": item.session_id,
-        "created_at": item.created_at.isoformat(),
-        "started_at": item.started_at.isoformat() if item.started_at else None,
-        "ended_at": item.ended_at.isoformat() if item.ended_at else None,
-    })
+    return json.dumps(
+        {
+            "task_id": item.id,
+            "agent_id": item.agent_id,
+            "agent_nickname": item.agent_nickname,
+            "prompt": item.prompt,
+            "status": item.status,
+            "session_id": item.session_id,
+            "created_at": item.created_at.isoformat(),
+            "started_at": item.started_at.isoformat() if item.started_at else None,
+            "ended_at": item.ended_at.isoformat() if item.ended_at else None,
+        }
+    )
 
 
 @mcp.tool()
@@ -190,12 +202,14 @@ async def cancel_task(
         await db.cancel_queue_item(task_id)
         item_after = await db.get_queue_item(task_id)
 
-    return json.dumps({
-        "task_id": task_id,
-        "previous_status": item_before.status,
-        "current_status": item_after.status if item_after else "unknown",
-        "cancelled": item_after.status == "cancelled" if item_after else False,
-    })
+    return json.dumps(
+        {
+            "task_id": task_id,
+            "previous_status": item_before.status,
+            "current_status": item_after.status if item_after else "unknown",
+            "cancelled": item_after.status == "cancelled" if item_after else False,
+        }
+    )
 
 
 @mcp.tool()
@@ -210,16 +224,18 @@ async def get_session(
     if not record:
         return json.dumps({"error": f"Session {session_id!r} not found"})
 
-    return json.dumps({
-        "session_id": record.id,
-        "vendor": record.vendor,
-        "prompt": record.prompt,
-        "workdir": record.workdir,
-        "status": record.status,
-        "started_at": record.started_at.isoformat(),
-        "ended_at": record.ended_at.isoformat() if record.ended_at else None,
-        "vendor_session_id": record.vendor_session_id,
-    })
+    return json.dumps(
+        {
+            "session_id": record.id,
+            "vendor": record.vendor,
+            "prompt": record.prompt,
+            "workdir": record.workdir,
+            "status": record.status,
+            "started_at": record.started_at.isoformat(),
+            "ended_at": record.ended_at.isoformat() if record.ended_at else None,
+            "vendor_session_id": record.vendor_session_id,
+        }
+    )
 
 
 @mcp.tool()
@@ -228,16 +244,21 @@ async def save_memory(
     description: Annotated[str, Field(description="One-line summary shown in list_memories (max 200 chars)")],
     content: Annotated[str, Field(description="Full memory content — context, state, or notes to resume from")],
 ) -> str:
-    """Save a new memory for an agent. Each call creates a new memory entry; use the returned memory_id for later retrieval or deletion."""
+    """Save a new memory for an agent.
+
+    Each call creates a new memory entry; use the returned memory_id for later retrieval or deletion.
+    """
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         record = await db.save_memory(agent_id, description[:200], content)
-    return json.dumps({
-        "memory_id": record.id,
-        "agent_id": record.agent_id,
-        "description": record.description,
-        "updated_at": record.updated_at.isoformat(),
-    })
+    return json.dumps(
+        {
+            "memory_id": record.id,
+            "agent_id": record.agent_id,
+            "description": record.description,
+            "updated_at": record.updated_at.isoformat(),
+        }
+    )
 
 
 @mcp.tool()
@@ -272,13 +293,15 @@ async def get_memory(
         record = await db.get_memory(memory_id)
     if not record:
         return json.dumps({"error": f"Memory {memory_id!r} not found"})
-    return json.dumps({
-        "memory_id": record.id,
-        "agent_id": record.agent_id,
-        "description": record.description,
-        "content": record.content,
-        "updated_at": record.updated_at.isoformat(),
-    })
+    return json.dumps(
+        {
+            "memory_id": record.id,
+            "agent_id": record.agent_id,
+            "description": record.description,
+            "content": record.content,
+            "updated_at": record.updated_at.isoformat(),
+        }
+    )
 
 
 @mcp.tool()

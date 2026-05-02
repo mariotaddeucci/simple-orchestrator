@@ -221,11 +221,7 @@ def setup_logging(settings: OrchestratorSettings) -> None:
 
     root = logging.getLogger()
     # Skip if handlers already configured at this level
-    existing_files = {
-        h.baseFilename
-        for h in root.handlers
-        if isinstance(h, TimedRotatingFileHandler)
-    }
+    existing_files = {h.baseFilename for h in root.handlers if isinstance(h, TimedRotatingFileHandler)}
     log_file = str(logs_dir / "orchestrator.log")
     if log_file not in existing_files:
         fh = TimedRotatingFileHandler(
@@ -238,7 +234,9 @@ def setup_logging(settings: OrchestratorSettings) -> None:
         fh.setFormatter(fmt)
         root.addHandler(fh)
 
-    if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, TimedRotatingFileHandler) for h in root.handlers):
+    if not any(
+        isinstance(h, logging.StreamHandler) and not isinstance(h, TimedRotatingFileHandler) for h in root.handlers
+    ):
         sh = logging.StreamHandler()
         sh.setLevel(level)
         sh.setFormatter(fmt)

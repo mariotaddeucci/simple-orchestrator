@@ -2,8 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
-from ..models.agent import AgentConfig
-from ..models.session import SessionConfig
+from simple_orchestrator.models.session import SessionConfig
 
 
 class BaseAgentService(ABC):
@@ -19,6 +18,4 @@ class BaseAgentService(ABC):
     ) -> None: ...
 
     @abstractmethod
-    async def execute_session(
-        self, config: SessionConfig
-    ) -> AsyncIterator[Any]: ...
+    async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]: ...
