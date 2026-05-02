@@ -11,7 +11,7 @@ from .skill import SkillConfig
 class SessionConfig(BaseModel):
     prompt: str
     model: str | None = None
-    workdir: str = "."
+    workdir: str | None = None
     mcp_servers: dict[str, Annotated[McpConfig, Field(discriminator="type")]] = Field(default_factory=dict)
     skills: list[str | SkillConfig] = Field(default_factory=list)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)

@@ -9,6 +9,7 @@ class QueueItem(BaseModel):
     agent_id: str
     agent_nickname: str | None = None
     prompt: str
+    workdir: str | None = None
     status: Literal["pending", "running", "completed", "failed", "cancelled"]
     session_id: str | None = None
     created_at: datetime

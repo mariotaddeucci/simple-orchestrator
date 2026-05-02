@@ -233,6 +233,26 @@ async def test_enqueue_agent_nickname_propagated(db):
     assert item.agent_nickname == "my-nick"
 
 
+async def test_enqueue_with_workdir(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    item = await db.enqueue(agent.id, "task with workdir", workdir="/my/project")
+    assert item.workdir == "/my/project"
+
+    fetched = await db.get_queue_item(item.id)
+    assert fetched is not None
+    assert fetched.workdir == "/my/project"
+
+
+async def test_enqueue_without_workdir_is_none(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    item = await db.enqueue(agent.id, "task no workdir")
+    assert item.workdir is None
+
+    fetched = await db.get_queue_item(item.id)
+    assert fetched is not None
+    assert fetched.workdir is None
+
+
 async def test_sessions_table_accessible_from_orchestrator_db(db):
     """OrchestratorDB inherits SessionHistoryDB; sessions table should work."""
     record = SessionRecord(

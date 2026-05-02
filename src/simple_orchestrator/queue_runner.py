@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class _AgentInfo:
     label: str
     vendor: str
-    workdir: str
+    workdir: str | None
     prompt: str
     model: str | None
     mcp_servers: dict
@@ -105,7 +105,10 @@ class QueueRunner:
 
     async def _dispatch(self, item: QueueItem) -> None:
         info = await self._resolve_agent(item.agent_id)
-        workdir = info.workdir if info else "."
+        # Determine the effective workdir for serialisation: item overrides agent.
+        # If neither specifies one, use item.id as a unique key so the task never
+        # blocks other tasks (each temp-dir session is independent).
+        workdir = item.workdir or (info.workdir if info else None) or item.id
         try:
             async with self._workdir_lock(workdir):
                 await self._process(item, info)
@@ -146,10 +149,13 @@ class QueueRunner:
         """Global MCPs/skills from settings merged with agent-specific ones."""
         merged_mcp = {**self._settings.mcp_servers, **info.mcp_servers}
         merged_skills = list(self._settings.skills) + list(info.skills)
+        # item.workdir takes priority over the agent-level default; None means
+        # BaseVendor.run() will create a temporary directory for this session.
+        workdir = item.workdir if item.workdir is not None else info.workdir
         return SessionConfig(
             prompt=item.prompt,
             model=info.model,
-            workdir=info.workdir,
+            workdir=workdir,
             mcp_servers=merged_mcp,
             skills=merged_skills,
         )

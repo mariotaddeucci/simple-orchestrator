@@ -134,7 +134,7 @@ class AgentSettings(BaseModel):
     nickname: str | None = None
     vendor: str
     model: str | None = None
-    workdir: str = "."
+    workdir: str | None = None
     prompt: str | None = None
     prompt_file: Path | None = None
     mcp_servers: dict[

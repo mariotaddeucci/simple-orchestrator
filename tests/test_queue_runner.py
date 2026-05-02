@@ -180,3 +180,58 @@ async def test_build_session_config_merges_mcp_and_skills(orch_db):
     assert "global-skill" in config.skills
     assert "agent-skill" in config.skills
     assert config.prompt == "merged task"
+
+
+async def test_build_session_config_item_workdir_overrides_agent(orch_db):
+    """item.workdir takes priority over the agent-level workdir."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(label="A", vendor="fake", workdir="/agent-dir", prompt="p", model=None, mcp_servers={}, skills=[])
+    item = QueueItem(
+        id=str(ULID()),
+        agent_id="any",
+        prompt="task",
+        workdir="/task-dir",
+        status="running",
+        created_at=datetime.now(UTC),
+    )
+
+    config = runner._build_session_config(item, info)
+    assert config.workdir == "/task-dir"
+
+
+async def test_build_session_config_falls_back_to_agent_workdir(orch_db):
+    """When item has no workdir, the agent workdir is used."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(label="A", vendor="fake", workdir="/agent-dir", prompt="p", model=None, mcp_servers={}, skills=[])
+    item = QueueItem(
+        id=str(ULID()),
+        agent_id="any",
+        prompt="task",
+        status="running",
+        created_at=datetime.now(UTC),
+    )
+
+    config = runner._build_session_config(item, info)
+    assert config.workdir == "/agent-dir"
+
+
+async def test_build_session_config_no_workdir_is_none(orch_db):
+    """When neither item nor agent specifies a workdir, config.workdir is None."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(label="A", vendor="fake", workdir=None, prompt="p", model=None, mcp_servers={}, skills=[])
+    item = QueueItem(
+        id=str(ULID()),
+        agent_id="any",
+        prompt="task",
+        status="running",
+        created_at=datetime.now(UTC),
+    )
+
+    config = runner._build_session_config(item, info)
+    assert config.workdir is None

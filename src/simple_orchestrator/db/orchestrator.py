@@ -34,6 +34,7 @@ class OrchestratorDB(SessionHistoryDB):
                 agent_id TEXT NOT NULL,
                 agent_nickname TEXT,
                 prompt TEXT NOT NULL,
+                workdir TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 session_id TEXT,
                 created_at TEXT NOT NULL,
@@ -58,6 +59,12 @@ class OrchestratorDB(SessionHistoryDB):
             );
         """)
         await self._conn.commit()
+        # Migration: add workdir column to queue if it doesn't exist yet (existing DBs).
+        try:
+            await self._conn.execute("ALTER TABLE queue ADD COLUMN workdir TEXT")
+            await self._conn.commit()
+        except Exception:  # noqa: S110
+            pass  # column already exists
 
     # ── agents ────────────────────────────────────────────────────────────────
 
@@ -126,7 +133,7 @@ class OrchestratorDB(SessionHistoryDB):
 
     # ── queue ─────────────────────────────────────────────────────────────────
 
-    async def enqueue(self, agent_id: str, prompt: str) -> QueueItem:
+    async def enqueue(self, agent_id: str, prompt: str, workdir: str | None = None) -> QueueItem:
         assert self._conn
         agent = await self.get_agent(agent_id)
         item = QueueItem(
@@ -134,16 +141,19 @@ class OrchestratorDB(SessionHistoryDB):
             agent_id=agent_id,
             agent_nickname=agent.nickname if agent else None,
             prompt=prompt,
+            workdir=workdir,
             status="pending",
             created_at=datetime.now(UTC),
         )
         await self._conn.execute(
-            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, workdir, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 item.id,
                 item.agent_id,
                 item.agent_nickname,
                 item.prompt,
+                item.workdir,
                 item.status,
                 item.created_at.isoformat(),
             ),
@@ -155,7 +165,7 @@ class OrchestratorDB(SessionHistoryDB):
         """Atomically claim the next pending item (FIFO by ULID)."""
         assert self._conn
         async with self._conn.execute(
-            "SELECT id, agent_id, agent_nickname, prompt, status, session_id, "
+            "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at "
             "FROM queue WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
         ) as cursor:
@@ -204,7 +214,7 @@ class OrchestratorDB(SessionHistoryDB):
     async def get_queue_item(self, item_id: str) -> QueueItem | None:
         assert self._conn
         async with self._conn.execute(
-            "SELECT id, agent_id, agent_nickname, prompt, status, session_id, "
+            "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at FROM queue WHERE id = ?",
             (item_id,),
         ) as cursor:
@@ -228,7 +238,7 @@ class OrchestratorDB(SessionHistoryDB):
     ) -> list[QueueItem]:
         assert self._conn
         _cols = (
-            "SELECT id, agent_id, agent_nickname, prompt, status, session_id, "
+            "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at FROM queue"
         )
         if status is not None and agent_id is not None:
@@ -327,11 +337,12 @@ def _row_to_queue(row: aiosqlite.Row) -> QueueItem:
         agent_id=row[1],
         agent_nickname=row[2],
         prompt=row[3],
-        status=row[4],
-        session_id=row[5],
-        created_at=datetime.fromisoformat(row[6]),
-        started_at=datetime.fromisoformat(row[7]) if row[7] else None,
-        ended_at=datetime.fromisoformat(row[8]) if row[8] else None,
+        workdir=row[4],
+        status=row[5],
+        session_id=row[6],
+        created_at=datetime.fromisoformat(row[7]),
+        started_at=datetime.fromisoformat(row[8]) if row[8] else None,
+        ended_at=datetime.fromisoformat(row[9]) if row[9] else None,
     )
 
 
