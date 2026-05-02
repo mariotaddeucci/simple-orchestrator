@@ -231,13 +231,13 @@ class OrchestratorDB(SessionHistoryDB):
             "SELECT id, agent_id, agent_nickname, prompt, status, session_id, "
             "created_at, started_at, ended_at FROM queue"
         )
-        if status and agent_id:
+        if status is not None and agent_id is not None:
             query = _cols + " WHERE status = ? AND agent_id = ? ORDER BY id ASC"
             params: list[str] = [status, agent_id]
-        elif status:
+        elif status is not None:
             query = _cols + " WHERE status = ? ORDER BY id ASC"
             params = [status]
-        elif agent_id:
+        elif agent_id is not None:
             query = _cols + " WHERE agent_id = ? ORDER BY id ASC"
             params = [agent_id]
         else:

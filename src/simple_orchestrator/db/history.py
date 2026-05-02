@@ -109,10 +109,10 @@ class SessionHistoryDB:
         assert self._conn
         conditions: list[str] = []
         params: list[str] = []
-        if vendor:
+        if vendor is not None:
             conditions.append("vendor = ?")
             params.append(vendor)
-        if status:
+        if status is not None:
             conditions.append("status = ?")
             params.append(status)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""

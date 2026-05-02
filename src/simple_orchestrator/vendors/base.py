@@ -17,6 +17,7 @@ class BaseVendor(ABC):
         self._db = db
         self._active_tasks: dict[str, asyncio.Task[None]] = {}
         self._active_handles: dict[str, Any] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     @property
     @abstractmethod
@@ -39,7 +40,13 @@ class BaseVendor(ABC):
             name=f"{self.vendor_name}-{session_id}",
         )
         self._active_tasks[session_id] = task
-        task.add_done_callback(lambda t: asyncio.create_task(self._on_done(session_id, t)))
+
+        def _on_done_callback(t: asyncio.Task[None]) -> None:
+            bg = asyncio.create_task(self._on_done(session_id, t))
+            self._background_tasks.add(bg)
+            bg.add_done_callback(self._background_tasks.discard)
+
+        task.add_done_callback(_on_done_callback)
         return session_id
 
     async def kill(self, session_id: str) -> None:
