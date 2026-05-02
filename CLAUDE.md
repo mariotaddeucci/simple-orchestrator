@@ -10,7 +10,7 @@ All commands use `uv` — never activate the venv manually.
 uv run python -c "..."          # run inline Python
 uv run simple-orchestrator      # run CLI entrypoint (currently a stub)
 uv add <package>                # add dependency
-uv sync --frozen                # sync venv from lock file
+uv sync --frozen                # sync venv strictly from lock file (reproducible)
 ```
 
 ### Code quality
