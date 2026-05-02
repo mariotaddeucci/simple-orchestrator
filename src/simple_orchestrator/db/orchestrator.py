@@ -50,6 +50,11 @@ class OrchestratorDB(SessionHistoryDB):
             );
 
             CREATE INDEX IF NOT EXISTS idx_memory_agent_id ON memory (agent_id);
+
+            CREATE TABLE IF NOT EXISTS cron_state (
+                key TEXT PRIMARY KEY,
+                last_run TEXT NOT NULL
+            );
         """)
         await self._conn.commit()
 
@@ -242,6 +247,25 @@ class OrchestratorDB(SessionHistoryDB):
             rows = await cursor.fetchall()
         return [_row_to_queue(r) for r in rows]
 
+
+    # ── cron state ───────────────────────────────────────────────────────────
+
+    async def get_cron_last_run(self, key: str) -> datetime | None:
+        assert self._conn
+        async with self._conn.execute(
+            "SELECT last_run FROM cron_state WHERE key = ?", (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return datetime.fromisoformat(row[0]) if row else None
+
+    async def set_cron_last_run(self, key: str, last_run: datetime) -> None:
+        assert self._conn
+        await self._conn.execute(
+            "INSERT INTO cron_state (key, last_run) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET last_run = excluded.last_run",
+            (key, last_run.isoformat()),
+        )
+        await self._conn.commit()
 
     # ── memory ────────────────────────────────────────────────────────────────
 

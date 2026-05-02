@@ -58,6 +58,7 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Annotated, Literal
 
+from croniter import croniter
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
@@ -89,6 +90,31 @@ class PollingSettings(BaseModel):
     agent_id: str
     prompt: str
     interval_minutes: float = Field(gt=0)
+
+
+class CronSettings(BaseModel):
+    """
+    Cron-scheduled entry — enqueues a prompt to an agent on a cron schedule.
+    Runs immediately if never executed before. Skips enqueue if identical
+    (agent_id + prompt) item is already pending or running.
+
+    TOML syntax (array of tables):
+
+        [[crons]]
+        agent_id = "reviewer"
+        prompt   = "Review recent git changes and report issues."
+        cron     = "0 */6 * * *"   # standard 5-field cron expression
+    """
+
+    agent_id: str
+    prompt: str
+    cron: str
+
+    @model_validator(mode="after")
+    def _validate_cron(self) -> "CronSettings":
+        if not croniter.is_valid(self.cron):
+            raise ValueError(f"Invalid cron expression: {self.cron!r}")
+        return self
 
 
 class AgentSettings(BaseModel):
@@ -157,6 +183,7 @@ class OrchestratorSettings(BaseSettings):
     skills: list[str | SkillConfig] = Field(default_factory=list)
     agents: dict[str, AgentSettings] = Field(default_factory=dict)
     pollings: list[PollingSettings] = Field(default_factory=list)
+    crons: list[CronSettings] = Field(default_factory=list)
 
     @classmethod
     def settings_customise_sources(
