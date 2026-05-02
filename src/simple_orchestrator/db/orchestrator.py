@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -63,8 +64,9 @@ class OrchestratorDB(SessionHistoryDB):
         try:
             await self._conn.execute("ALTER TABLE queue ADD COLUMN workdir TEXT")
             await self._conn.commit()
-        except Exception:  # noqa: S110
-            pass  # column already exists
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc):
+                raise
 
     # ── agents ────────────────────────────────────────────────────────────────
 
