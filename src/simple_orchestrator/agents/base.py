@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
-from ..models.session import SessionConfig
+from simple_orchestrator.models.session import SessionConfig
 
 
 class BaseAgentService(ABC):

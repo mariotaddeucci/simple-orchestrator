@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -54,6 +55,7 @@ class QueueRunner:
 
         self._running = False
         self._loop_task: asyncio.Task[None] | None = None
+        self._dispatch_tasks: set[asyncio.Task[None]] = set()
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
@@ -67,10 +69,8 @@ class QueueRunner:
         self._running = False
         if self._loop_task and not self._loop_task.done():
             self._loop_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._loop_task
-            except asyncio.CancelledError:
-                pass
 
     async def run_forever(self) -> None:
         """Start the polling loop and block until cancelled."""
@@ -85,7 +85,9 @@ class QueueRunner:
             if not item:
                 self._semaphore.release()
                 break
-            asyncio.create_task(self._dispatch(item))
+            task = asyncio.create_task(self._dispatch(item))
+            self._dispatch_tasks.add(task)
+            task.add_done_callback(self._dispatch_tasks.discard)
 
     # ── internal loop ─────────────────────────────────────────────────────────
 
@@ -94,7 +96,9 @@ class QueueRunner:
             await self._semaphore.acquire()
             item = await self._db.dequeue_next()
             if item:
-                asyncio.create_task(self._dispatch(item))
+                task = asyncio.create_task(self._dispatch(item))
+                self._dispatch_tasks.add(task)
+                task.add_done_callback(self._dispatch_tasks.discard)
             else:
                 self._semaphore.release()
                 await asyncio.sleep(self._poll_interval)

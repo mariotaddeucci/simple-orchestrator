@@ -20,6 +20,7 @@ Or globally (all agents):
 """
 
 import json
+from functools import cache
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -37,22 +38,18 @@ mcp = FastMCP(
     ),
 )
 
-_settings: OrchestratorSettings | None = None
 
-
+@cache
 def _get_settings() -> OrchestratorSettings:
-    global _settings
-    if _settings is None:
-        _settings = OrchestratorSettings()
-    return _settings
+    return OrchestratorSettings()
 
 
 def _prompt_description(prompt: str) -> str:
     """Extract a short description from a prompt string."""
-    for line in prompt.splitlines():
-        line = line.strip().lstrip("#").strip()
-        if line:
-            return line[:200]
+    for raw_line in prompt.splitlines():
+        stripped = raw_line.strip().lstrip("#").strip()
+        if stripped:
+            return stripped[:200]
     return ""
 
 
@@ -60,7 +57,10 @@ def _prompt_description(prompt: str) -> str:
 async def list_agents(
     vendor: Annotated[str | None, Field(description="Filter by vendor: claude_code, opencode, github_copilot")] = None,
 ) -> str:
-    """List all available agents that can process tasks. Returns id, name, vendor, workdir, and a description extracted from the agent's prompt."""
+    """List all available agents that can process tasks.
+
+    Returns id, name, vendor, workdir, and a description extracted from the agent's prompt.
+    """
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         db_agents = await db.list_agents(vendor=vendor)
@@ -244,7 +244,10 @@ async def save_memory(
     description: Annotated[str, Field(description="One-line summary shown in list_memories (max 200 chars)")],
     content: Annotated[str, Field(description="Full memory content — context, state, or notes to resume from")],
 ) -> str:
-    """Save a new memory for an agent. Each call creates a new memory entry; use the returned memory_id for later retrieval or deletion."""
+    """Save a new memory for an agent.
+
+    Each call creates a new memory entry; use the returned memory_id for later retrieval or deletion.
+    """
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         record = await db.save_memory(agent_id, description[:200], content)

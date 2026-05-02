@@ -1,4 +1,9 @@
+import argparse
+import asyncio
+import logging
+
 from .db import OrchestratorDB, SessionHistoryDB
+from .mcp_server import serve, serve_sse_async
 from .models import (
     AgentConfig,
     AgentRecord,
@@ -44,9 +49,6 @@ __all__ = [
 
 
 def main() -> None:
-    import argparse
-    import asyncio
-
     parser = argparse.ArgumentParser(prog="simple-orchestrator")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser(
@@ -61,8 +63,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "mcp-server":
-        from .mcp_server import serve
-
         serve()
 
     elif args.command == "start":
@@ -73,16 +73,6 @@ def main() -> None:
 
 
 async def _start() -> None:
-    import asyncio
-    import logging
-
-    from .db.orchestrator import OrchestratorDB
-    from .mcp_server import serve_sse_async
-    from .polling_runner import PollingRunner
-    from .queue_runner import QueueRunner
-    from .settings import OrchestratorSettings, setup_logging
-    from .vendors.claude_code import ClaudeCodeVendor
-
     settings = OrchestratorSettings()
     setup_logging(settings)
 

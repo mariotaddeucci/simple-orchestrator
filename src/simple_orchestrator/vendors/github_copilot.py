@@ -1,13 +1,19 @@
+import contextlib
 from collections.abc import AsyncIterator
 from typing import Any
 
 from copilot.client import CopilotClient
-from copilot.session import CopilotSession
+from copilot.generated.session_events import PermissionRequest
+from copilot.session import CopilotSession, PermissionRequestResult
 
-from ..db.history import SessionHistoryDB
-from ..models.model import ModelInfo
-from ..models.session import SessionConfig
-from .base import BaseVendor
+from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator.models.session import SessionConfig
+from simple_orchestrator.vendors.base import BaseVendor
+
+
+def _auto_approve(_request: PermissionRequest, _env: dict[str, str]) -> PermissionRequestResult:
+    return PermissionRequestResult(kind="approve-once")
 
 
 class GithubCopilotVendor(BaseVendor):
@@ -39,8 +45,9 @@ class GithubCopilotVendor(BaseVendor):
         async def _stream() -> AsyncIterator[Any]:
             async with CopilotClient() as client:
                 session: CopilotSession = await client.create_session(
+                    on_permission_request=_auto_approve,
                     model=config.model or self._model,
-                    workspace_path=config.workdir,
+                    working_directory=config.workdir,
                 )
                 async with session:
                     yield {"type": "session_created", "session_id": session.session_id}
@@ -55,8 +62,9 @@ class GithubCopilotVendor(BaseVendor):
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
         async with CopilotClient() as client:
             copilot_session: CopilotSession = await client.create_session(
+                on_permission_request=_auto_approve,
                 model=config.model or self._model,
-                workspace_path=config.workdir,
+                working_directory=config.workdir,
             )
             async with copilot_session:
                 await self._db.update_status(
@@ -80,7 +88,5 @@ class GithubCopilotVendor(BaseVendor):
         session: CopilotSession | None = self._active_handles.pop(session_id, None)
         if not session:
             return
-        try:
+        with contextlib.suppress(Exception):
             await session.abort()
-        except Exception:
-            pass

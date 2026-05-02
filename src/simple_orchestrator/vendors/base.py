@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -6,9 +7,9 @@ from typing import Any
 
 from ulid import ULID
 
-from ..db.history import SessionHistoryDB
-from ..models.model import ModelInfo
-from ..models.session import SessionConfig, SessionRecord
+from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator.models.session import SessionConfig, SessionRecord
 
 
 class BaseVendor(ABC):
@@ -45,10 +46,8 @@ class BaseVendor(ABC):
         task = self._active_tasks.pop(session_id, None)
         if task and not task.done():
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
-            except (asyncio.CancelledError, Exception):
-                pass
         await self._vendor_kill(session_id)
         await self._db.update_status(session_id, "killed", datetime.now(UTC))
 
@@ -76,10 +75,8 @@ class BaseVendor(ABC):
         """Block until a running session completes. Safe to call after run()."""
         task = self._active_tasks.get(session_id)
         if task:
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
-            except (asyncio.CancelledError, Exception):
-                pass
         return await self._db.get(session_id)
 
     async def _on_done(self, session_id: str, task: asyncio.Task[None]) -> None:

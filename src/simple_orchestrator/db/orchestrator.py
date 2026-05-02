@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
 
+import aiosqlite
 from ulid import ULID
 
-from ..models.agent_record import AgentRecord
-from ..models.memory_record import MemoryRecord
-from ..models.queue_item import QueueItem
-from .history import SessionHistoryDB
+from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.models.agent_record import AgentRecord
+from simple_orchestrator.models.memory_record import MemoryRecord
+from simple_orchestrator.models.queue_item import QueueItem
 
 
 def _new_ulid() -> str:
@@ -226,20 +227,23 @@ class OrchestratorDB(SessionHistoryDB):
         agent_id: str | None = None,
     ) -> list[QueueItem]:
         assert self._conn
-        conditions: list[str] = []
-        params: list[str] = []
-        if status:
-            conditions.append("status = ?")
-            params.append(status)
-        if agent_id:
-            conditions.append("agent_id = ?")
-            params.append(agent_id)
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        async with self._conn.execute(
-            f"SELECT id, agent_id, agent_nickname, prompt, status, session_id, "
-            f"created_at, started_at, ended_at FROM queue {where} ORDER BY id ASC",
-            params,
-        ) as cursor:
+        _cols = (
+            "SELECT id, agent_id, agent_nickname, prompt, status, session_id, "
+            "created_at, started_at, ended_at FROM queue"
+        )
+        if status and agent_id:
+            query = _cols + " WHERE status = ? AND agent_id = ? ORDER BY id ASC"
+            params: list[str] = [status, agent_id]
+        elif status:
+            query = _cols + " WHERE status = ? ORDER BY id ASC"
+            params = [status]
+        elif agent_id:
+            query = _cols + " WHERE agent_id = ? ORDER BY id ASC"
+            params = [agent_id]
+        else:
+            query = _cols + " ORDER BY id ASC"
+            params = []
+        async with self._conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_queue(r) for r in rows]
 
@@ -304,7 +308,7 @@ class OrchestratorDB(SessionHistoryDB):
         return [_row_to_memory(r) for r in rows]
 
 
-def _row_to_agent(row: tuple) -> AgentRecord:
+def _row_to_agent(row: aiosqlite.Row) -> AgentRecord:
     return AgentRecord(
         id=row[0],
         name=row[1],
@@ -317,7 +321,7 @@ def _row_to_agent(row: tuple) -> AgentRecord:
     )
 
 
-def _row_to_queue(row: tuple) -> QueueItem:
+def _row_to_queue(row: aiosqlite.Row) -> QueueItem:
     return QueueItem(
         id=row[0],
         agent_id=row[1],
@@ -331,7 +335,7 @@ def _row_to_queue(row: tuple) -> QueueItem:
     )
 
 
-def _row_to_memory(row: tuple) -> MemoryRecord:
+def _row_to_memory(row: aiosqlite.Row) -> MemoryRecord:
     return MemoryRecord(
         id=row[0],
         agent_id=row[1],

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import hashlib
 import logging
 from datetime import UTC, datetime
@@ -53,10 +54,8 @@ class CronRunner:
         self._running = False
         if self._loop_task and not self._loop_task.done():
             self._loop_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._loop_task
-            except asyncio.CancelledError:
-                pass
 
     async def run_forever(self) -> None:
         """Start the cron loop and block until cancelled."""
