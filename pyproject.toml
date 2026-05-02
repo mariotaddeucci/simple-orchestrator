@@ -1,0 +1,26 @@
+[project]
+name = "simple-orchestrator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Mario Taddeucci", email = "mariotaddeucci@gmx.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "claude-agent-sdk>=0.1.72",
+    "github-copilot-sdk>=0.3.0",
+    "opencode-ai>=0.1.0a36",
+    "fastmcp>=2.0.0",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+    "python-ulid>=3.1.0",
+]
+
+[project.scripts]
+simple-orchestrator = "simple_orchestrator:main"
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"

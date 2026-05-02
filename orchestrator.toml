@@ -1,0 +1,90 @@
+# orchestrator.toml — commit this file to version-control your agents and settings.
+# Override which file to load: ORCHESTRATOR_TOML_FILE=/path/to/other.toml
+
+db_path             = "orchestrator.db"
+logs_dir            = "logs"
+log_level           = "INFO"          # DEBUG | INFO | WARNING | ERROR | CRITICAL
+max_active_sessions = 4
+
+# MCP server started alongside the orchestrator (uv run simple-orchestrator start).
+mcp_server_host = "127.0.0.1"
+mcp_server_port = 8765
+
+# ── Global MCP servers (available to all agents) ─────────────────────────────
+
+[mcp_servers.filesystem]
+type    = "stdio"
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+# Orchestrator MCP server — connects to the SSE endpoint started by `simple-orchestrator start`.
+# Add globally here to expose to ALL agents, or per-agent under
+# [agents.<id>.mcp_servers.orchestrator] for only the delegator agent.
+[mcp_servers.orchestrator]
+type = "sse"
+url  = "http://127.0.0.1:8765/sse"
+
+# [mcp_servers.github]
+# type = "sse"
+# url  = "http://localhost:3001/sse"
+
+# ── Global skills (available to all agents) ───────────────────────────────────
+
+skills = []
+
+# ── Pollings ──────────────────────────────────────────────────────────────────
+# Each [[pollings]] entry enqueues a prompt to an agent on a fixed interval.
+# On app start all pollings fire immediately, then repeat every interval_minutes.
+# Duplicate guard: skips enqueue if identical (agent_id + prompt) is already
+# pending or running in the queue.
+#
+# [[pollings]]
+# agent_id         = "reviewer"
+# prompt           = "Review recent git changes and report issues."
+# interval_minutes = 30
+
+# ── Agents ────────────────────────────────────────────────────────────────────
+# Keys become agent IDs — use them in db.enqueue("reviewer", "do this task").
+# Prompts: inline via `prompt` OR path to a markdown file via `prompt_file`.
+#
+# Delegator pattern:
+#   1. Add a delegator agent with the orchestrator MCP server configured.
+#   2. The delegator calls list_agents → enqueue_task for each work item.
+#   3. QueueRunner dispatches enqueued tasks to the target agents.
+#   4. Delegator polls list_tasks(status="completed") or get_task to read results.
+
+[agents.reviewer]
+name     = "Code Reviewer"
+nickname = "reviewer"
+vendor   = "claude_code"
+model    = "claude-sonnet-4-6"
+workdir  = "."
+prompt   = """
+You are an expert code reviewer. Analyse the code changes and provide structured feedback.
+
+## Output format
+Return findings as a markdown list grouped by: Bugs / Security / Performance / Style.
+"""
+
+# Example delegator agent — pulls tasks from an external source (e.g. via MCP)
+# and distributes them to the right agents via the orchestrator MCP server.
+#
+# [agents.delegator]
+# name     = "Task Delegator"
+# nickname = "delegator"
+# vendor   = "claude_code"
+# model    = "claude-sonnet-4-6"
+# workdir  = "."
+# prompt_file = "prompts/delegator.md"
+#
+# [agents.delegator.mcp_servers.orchestrator]
+# type = "sse"
+# url  = "http://127.0.0.1:8765/sse"
+
+# [agents.auditor]
+# name        = "Security Auditor"
+# nickname    = "auditor"
+# vendor      = "claude_code"
+# model       = "claude-opus-4-7"
+# workdir     = "."
+# prompt_file = "prompts/security-auditor.md"   # path relative to CWD
