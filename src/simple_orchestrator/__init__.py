@@ -20,6 +20,7 @@ from .models import (
 from .polling_runner import PollingRunner
 from .queue_runner import QueueRunner
 from .settings import AgentSettings, OrchestratorSettings, setup_logging
+from .tui import run_tui
 from .vendors import BaseVendor, ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "SessionHistoryDB",
     "SessionRecord",
     "SkillConfig",
+    "run_tui",
     "setup_logging",
 ]
 
@@ -59,6 +61,10 @@ def main() -> None:
         "mcp-server",
         help="Start MCP server on stdio only (used when spawned as MCP subprocess)",
     )
+    subparsers.add_parser(
+        "tui",
+        help="Open the terminal dashboard to monitor the queue",
+    )
 
     args = parser.parse_args()
 
@@ -67,6 +73,9 @@ def main() -> None:
 
     elif args.command == "start":
         asyncio.run(_start())
+
+    elif args.command == "tui":
+        asyncio.run(run_tui())
 
     else:
         parser.print_help()
