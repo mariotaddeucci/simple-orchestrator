@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run python -c ' *)",
+      "Bash(uv run *)",
+      "Bash(uv add *)",
+      "Bash(mkdir -p /Users/mariotaddeucci/Documents/GitHub/simple-orchestrator/src/simple_orchestrator/models)",
+      "Bash(mkdir -p /Users/mariotaddeucci/Documents/GitHub/simple-orchestrator/src/simple_orchestrator/db)",
+      "Bash(mkdir -p /Users/mariotaddeucci/Documents/GitHub/simple-orchestrator/src/simple_orchestrator/vendors)",
+      "Bash(uv sync *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(curl *)"
+    ]
+  }
+}
