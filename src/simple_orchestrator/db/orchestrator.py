@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ulid import ULID
 
@@ -78,7 +78,7 @@ class OrchestratorDB(SessionHistoryDB):
             model=model,
             vendor=vendor,
             workdir=workdir,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         await self._conn.execute(
             "INSERT INTO agents (id, name, nickname, prompt, model, vendor, workdir, created_at) "
@@ -100,8 +100,7 @@ class OrchestratorDB(SessionHistoryDB):
     async def get_agent(self, agent_id: str) -> AgentRecord | None:
         assert self._conn
         async with self._conn.execute(
-            "SELECT id, name, nickname, prompt, model, vendor, workdir, created_at "
-            "FROM agents WHERE id = ?",
+            "SELECT id, name, nickname, prompt, model, vendor, workdir, created_at FROM agents WHERE id = ?",
             (agent_id,),
         ) as cursor:
             row = await cursor.fetchone()
@@ -135,11 +134,10 @@ class OrchestratorDB(SessionHistoryDB):
             agent_nickname=agent.nickname if agent else None,
             prompt=prompt,
             status="pending",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         await self._conn.execute(
-            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 item.id,
                 item.agent_id,
@@ -166,7 +164,7 @@ class OrchestratorDB(SessionHistoryDB):
         item = _row_to_queue(row)
         await self._conn.execute(
             "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
-            (datetime.now(timezone.utc).isoformat(), item.id),
+            (datetime.now(UTC).isoformat(), item.id),
         )
         await self._conn.commit()
         return item
@@ -197,9 +195,8 @@ class OrchestratorDB(SessionHistoryDB):
     async def cancel_queue_item(self, item_id: str) -> None:
         assert self._conn
         await self._conn.execute(
-            "UPDATE queue SET status = 'cancelled', ended_at = ? "
-            "WHERE id = ? AND status = 'pending'",
-            (datetime.now(timezone.utc).isoformat(), item_id),
+            "UPDATE queue SET status = 'cancelled', ended_at = ? WHERE id = ? AND status = 'pending'",
+            (datetime.now(UTC).isoformat(), item_id),
         )
         await self._conn.commit()
 
@@ -217,8 +214,7 @@ class OrchestratorDB(SessionHistoryDB):
         """Return True if an identical (agent_id + prompt) item is pending or running."""
         assert self._conn
         async with self._conn.execute(
-            "SELECT 1 FROM queue WHERE agent_id = ? AND prompt = ? "
-            "AND status IN ('pending', 'running') LIMIT 1",
+            "SELECT 1 FROM queue WHERE agent_id = ? AND prompt = ? AND status IN ('pending', 'running') LIMIT 1",
             (agent_id, prompt),
         ) as cursor:
             row = await cursor.fetchone()
@@ -247,14 +243,11 @@ class OrchestratorDB(SessionHistoryDB):
             rows = await cursor.fetchall()
         return [_row_to_queue(r) for r in rows]
 
-
     # ── cron state ───────────────────────────────────────────────────────────
 
     async def get_cron_last_run(self, key: str) -> datetime | None:
         assert self._conn
-        async with self._conn.execute(
-            "SELECT last_run FROM cron_state WHERE key = ?", (key,)
-        ) as cursor:
+        async with self._conn.execute("SELECT last_run FROM cron_state WHERE key = ?", (key,)) as cursor:
             row = await cursor.fetchone()
         return datetime.fromisoformat(row[0]) if row else None
 
@@ -271,7 +264,7 @@ class OrchestratorDB(SessionHistoryDB):
 
     async def save_memory(self, agent_id: str, description: str, content: str) -> MemoryRecord:
         assert self._conn
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         memory_id = _new_ulid()
         await self._conn.execute(
             "INSERT INTO memory (id, agent_id, description, content, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -291,9 +284,7 @@ class OrchestratorDB(SessionHistoryDB):
 
     async def delete_memory(self, memory_id: str) -> bool:
         assert self._conn
-        async with self._conn.execute(
-            "SELECT 1 FROM memory WHERE id = ?", (memory_id,)
-        ) as cursor:
+        async with self._conn.execute("SELECT 1 FROM memory WHERE id = ?", (memory_id,)) as cursor:
             exists = await cursor.fetchone() is not None
         if exists:
             await self._conn.execute("DELETE FROM memory WHERE id = ?", (memory_id,))

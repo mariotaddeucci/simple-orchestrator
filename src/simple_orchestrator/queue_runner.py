@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .db.orchestrator import OrchestratorDB
 from .models.queue_item import QueueItem
@@ -113,19 +113,13 @@ class QueueRunner:
     async def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
         if not info:
             logger.error("queue %s: agent '%s' not found in settings or DB", item.id, item.agent_id)
-            await self._db.update_queue_item(
-                item.id, status="failed", ended_at=datetime.now(timezone.utc)
-            )
+            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
         vendor = self._vendors.get(info.vendor)
         if not vendor:
-            logger.error(
-                "queue %s [%s]: vendor '%s' not registered", item.id, info.label, info.vendor
-            )
-            await self._db.update_queue_item(
-                item.id, status="failed", ended_at=datetime.now(timezone.utc)
-            )
+            logger.error("queue %s [%s]: vendor '%s' not registered", item.id, info.label, info.vendor)
+            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
         config = self._build_session_config(item, info)
@@ -141,9 +135,7 @@ class QueueRunner:
             logger.exception("queue %s [%s] raised an error", item.id, info.label)
             queue_status = "failed"
 
-        await self._db.update_queue_item(
-            item.id, status=queue_status, ended_at=datetime.now(timezone.utc)
-        )
+        await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
         logger.info("queue %s [%s] → %s", item.id, info.label, queue_status)
 
     def _build_session_config(self, item: QueueItem, info: _AgentInfo) -> SessionConfig:
@@ -197,4 +189,4 @@ class QueueRunner:
 
     @property
     def active_count(self) -> int:
-        return self._settings.max_active_sessions - self._semaphore._value  # noqa: SLF001
+        return self._settings.max_active_sessions - self._semaphore._value

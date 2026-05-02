@@ -1,4 +1,5 @@
 from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -14,6 +15,4 @@ class AgentConfig(BaseModel):
     max_turns: int | None = None
     background: bool | None = None
     effort: Literal["low", "medium", "high", "max"] | int | None = None
-    permission_mode: (
-        Literal["default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"] | None
-    ) = None
+    permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"] | None = None

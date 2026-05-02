@@ -52,9 +52,7 @@ class ClaudeCodeVendor(BaseVendor):
     async def _vendor_kill(self, session_id: str) -> None:
         pass
 
-    def _build_options(
-        self, config: SessionConfig, session_id: str | None = None
-    ) -> ClaudeAgentOptions:
+    def _build_options(self, config: SessionConfig, session_id: str | None = None) -> ClaudeAgentOptions:
         all_agents = {**config.agents, **config.subagents}
         return ClaudeAgentOptions(
             model=config.model,

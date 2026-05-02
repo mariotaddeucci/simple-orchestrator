@@ -1,5 +1,4 @@
 from .db import OrchestratorDB, SessionHistoryDB
-from .settings import AgentSettings, OrchestratorSettings, setup_logging
 from .models import (
     AgentConfig,
     AgentRecord,
@@ -15,31 +14,32 @@ from .models import (
 )
 from .polling_runner import PollingRunner
 from .queue_runner import QueueRunner
+from .settings import AgentSettings, OrchestratorSettings, setup_logging
 from .vendors import BaseVendor, ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
 
 __all__ = [
-    "OrchestratorDB",
-    "OrchestratorSettings",
-    "AgentSettings",
-    "setup_logging",
-    "SessionHistoryDB",
     "AgentConfig",
     "AgentRecord",
+    "AgentSettings",
+    "BaseVendor",
+    "ClaudeCodeVendor",
+    "GithubCopilotVendor",
     "McpConfig",
     "McpHttpConfig",
     "McpSseConfig",
     "McpStdioConfig",
     "ModelInfo",
-    "QueueItem",
+    "OpenCodeVendor",
+    "OrchestratorDB",
+    "OrchestratorSettings",
     "PollingRunner",
+    "QueueItem",
     "QueueRunner",
     "SessionConfig",
+    "SessionHistoryDB",
     "SessionRecord",
     "SkillConfig",
-    "BaseVendor",
-    "ClaudeCodeVendor",
-    "GithubCopilotVendor",
-    "OpenCodeVendor",
+    "setup_logging",
 ]
 
 
@@ -62,6 +62,7 @@ def main() -> None:
 
     if args.command == "mcp-server":
         from .mcp_server import serve
+
         serve()
 
     elif args.command == "start":

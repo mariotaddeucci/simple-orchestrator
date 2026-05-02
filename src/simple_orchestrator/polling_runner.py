@@ -35,9 +35,7 @@ class PollingRunner:
     async def _fire(self, p: PollingSettings) -> None:
         try:
             if await self._db.has_duplicate_pending(p.agent_id, p.prompt):
-                logger.debug(
-                    "polling [%s]: skipped — duplicate pending/running", p.agent_id
-                )
+                logger.debug("polling [%s]: skipped — duplicate pending/running", p.agent_id)
                 return
             await self._db.enqueue(p.agent_id, p.prompt)
             logger.info(

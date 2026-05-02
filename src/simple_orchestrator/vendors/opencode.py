@@ -64,9 +64,7 @@ class OpenCodeVendor(BaseVendor):
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
         async with AsyncOpencode(base_url=self._base_url) as client:
             vendor_session = await client.session.create()
-            await self._db.update_status(
-                session_id, "running", vendor_session_id=vendor_session.id
-            )
+            await self._db.update_status(session_id, "running", vendor_session_id=vendor_session.id)
             self._active_handles[session_id] = (client, vendor_session.id)
 
             model_id = config.model or self._model_id

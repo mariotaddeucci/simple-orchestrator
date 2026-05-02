@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ulid import ULID
@@ -28,7 +28,7 @@ class BaseVendor(ABC):
             vendor=self.vendor_name,
             prompt=config.prompt,
             workdir=config.workdir,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status="running",
         )
         await self._db.save(record)
@@ -38,9 +38,7 @@ class BaseVendor(ABC):
             name=f"{self.vendor_name}-{session_id}",
         )
         self._active_tasks[session_id] = task
-        task.add_done_callback(
-            lambda t: asyncio.create_task(self._on_done(session_id, t))
-        )
+        task.add_done_callback(lambda t: asyncio.create_task(self._on_done(session_id, t)))
         return session_id
 
     async def kill(self, session_id: str) -> None:
@@ -52,7 +50,7 @@ class BaseVendor(ABC):
             except (asyncio.CancelledError, Exception):
                 pass
         await self._vendor_kill(session_id)
-        await self._db.update_status(session_id, "killed", datetime.now(timezone.utc))
+        await self._db.update_status(session_id, "killed", datetime.now(UTC))
 
     @abstractmethod
     async def list_models(self) -> list[ModelInfo]:
@@ -60,9 +58,7 @@ class BaseVendor(ABC):
         ...
 
     @abstractmethod
-    async def execute_session(
-        self, config: SessionConfig
-    ) -> AsyncIterator[Any]:
+    async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]:
         """Stream vendor events for a session without persisting to DB."""
         ...
 
@@ -92,4 +88,4 @@ class BaseVendor(ABC):
             return
         exc = task.exception()
         status = "failed" if exc else "completed"
-        await self._db.update_status(session_id, status, datetime.now(timezone.utc))
+        await self._db.update_status(session_id, status, datetime.now(UTC))
