@@ -28,6 +28,12 @@ url  = "http://127.0.0.1:8765/sse"
 # type = "sse"
 # url  = "http://localhost:3001/sse"
 
+# Local FastMCP app — loaded via importlib (no separate process to manage).
+# import_path uses the "module.path:attribute" notation.
+# [mcp_servers.my_tools]
+# type        = "local"
+# import_path = "my_package.tools:mcp"
+
 # ── Global skills (available to all agents) ───────────────────────────────────
 
 skills = []
