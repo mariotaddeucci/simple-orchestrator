@@ -13,7 +13,7 @@ from claude_agent_sdk.types import (
 
 from simple_orchestrator.db.history import SessionHistoryDB
 from simple_orchestrator.models.agent import AgentConfig
-from simple_orchestrator.models.mcp import McpConfig, McpHttpConfig, McpSseConfig, McpStdioConfig
+from simple_orchestrator.models.mcp import McpConfig, McpHttpConfig, McpLocalConfig, McpSseConfig, McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.session import SessionConfig
 from simple_orchestrator.models.skill import SkillConfig
@@ -74,17 +74,19 @@ def _map_mcp_servers(
 ) -> dict[str, McpServerConfig]:
     result: dict[str, McpServerConfig] = {}
     for name, cfg in mcp_servers.items():
-        if isinstance(cfg, McpStdioConfig):
-            entry: McpStdioServerConfig = {"command": cfg.command}
-            if cfg.args:
-                entry["args"] = cfg.args
-            if cfg.env:
-                entry["env"] = cfg.env
+        # Resolve local FastMCP apps to an equivalent stdio config first
+        resolved = cfg.to_stdio() if isinstance(cfg, McpLocalConfig) else cfg
+        if isinstance(resolved, McpStdioConfig):
+            entry: McpStdioServerConfig = {"command": resolved.command}
+            if resolved.args:
+                entry["args"] = resolved.args
+            if resolved.env:
+                entry["env"] = resolved.env
             result[name] = entry
-        elif isinstance(cfg, McpSseConfig):
-            result[name] = McpSSEServerConfig(type="sse", url=cfg.url)
-        elif isinstance(cfg, McpHttpConfig):
-            result[name] = McpHttpServerConfig(type="http", url=cfg.url)
+        elif isinstance(resolved, McpSseConfig):
+            result[name] = McpSSEServerConfig(type="sse", url=resolved.url)
+        elif isinstance(resolved, McpHttpConfig):
+            result[name] = McpHttpServerConfig(type="http", url=resolved.url)
     return result
 
 

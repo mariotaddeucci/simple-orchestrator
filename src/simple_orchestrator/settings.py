@@ -18,6 +18,10 @@ args    = ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
 type = "sse"
 url  = "http://localhost:3001/sse"
 
+[mcp_servers.my_tools]
+type        = "local"
+import_path = "my_package.tools:mcp"
+
 skills = ["my-skill", "other-skill"]
 
 [agents.reviewer]
