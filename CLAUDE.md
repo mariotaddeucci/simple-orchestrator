@@ -10,10 +10,25 @@ All commands use `uv` — never activate the venv manually.
 uv run python -c "..."          # run inline Python
 uv run simple-orchestrator      # run CLI entrypoint (currently a stub)
 uv add <package>                # add dependency
-uv sync                         # sync venv from lock file
+uv sync --frozen                # sync venv from lock file
 ```
 
-No test runner or linter is configured yet. When adding them, use `uv add --dev`.
+### Code quality
+
+```bash
+uv run ruff check .             # lint (all rules: pyflakes, isort, security, bugbear…)
+uv run ruff check --fix .       # lint + auto-fix
+uv run ruff format .            # format code
+uv run pyrefly check            # static type checking
+```
+
+### Git hooks (prek)
+
+```bash
+uv run prek install             # install commit hooks (run once per clone)
+uv run prek run --all-files     # run all hooks on every file manually
+uv run prek uninstall           # remove git hooks
+```
 
 ## Architecture
 

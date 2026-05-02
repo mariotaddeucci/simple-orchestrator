@@ -1,0 +1,18 @@
+# Copilot remote agent setup steps
+# This file configures the environment for GitHub Copilot coding agent sessions.
+# Reference: https://docs.github.com/en/copilot/customizing-copilot/customizing-the-development-environment-for-copilot-coding-agent
+
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
+
+  - name: Install uv
+    uses: astral-sh/setup-uv@v5
+    with:
+      enable-cache: true
+
+  - name: Sync project dependencies
+    run: uv sync --frozen
+
+  - name: Install prek git hooks
+    run: uv run prek install
