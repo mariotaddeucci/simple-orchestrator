@@ -450,7 +450,7 @@ async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
             workdir="/tmp/work",
             started_at=datetime.now(UTC),
             status="running",
-        )
+        ),
     )
 
     # Use a short poll_interval so the background loop doesn't delay the test.

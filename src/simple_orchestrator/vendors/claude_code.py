@@ -103,7 +103,7 @@ def _map_agents(agents: dict[str, AgentConfig]) -> dict[str, AgentDefinition]:
             disallowedTools=cfg.disallowed_tools,
             model=cfg.model,
             skills=cfg.skills,
-            mcpServers=cast(list[str | dict[str, Any]] | None, cfg.mcp_servers),
+            mcpServers=cast("list[str | dict[str, Any]] | None", cfg.mcp_servers),
             initialPrompt=cfg.initial_prompt,
             maxTurns=cfg.max_turns,
             background=cfg.background,

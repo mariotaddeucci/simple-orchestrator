@@ -222,7 +222,7 @@ class OrchestratorDB(SessionHistoryDB):
         async with self._conn.execute(
             "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at, depends_on "
-            "FROM queue WHERE status = 'pending' ORDER BY id ASC"
+            "FROM queue WHERE status = 'pending' ORDER BY id ASC",
         ) as cursor:
             rows = await cursor.fetchall()
 
