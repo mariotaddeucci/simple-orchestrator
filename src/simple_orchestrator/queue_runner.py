@@ -280,21 +280,23 @@ class QueueRunner:
         item: QueueItem,
         info: _AgentInfo,
     ) -> tuple[list[SkillConfig], str | None]:
-        """Filter `.agents/skills/*.md` files by glob patterns and copy matches to a temp dir.
+        """Filter `.agents/skills/` directories by glob patterns and copy matches to a temp dir.
 
         Determines the effective workdir from *item* and *info* (same priority as
-        :meth:`_build_session_config`), then scans ``<workdir>/.agents/skills/``.
-        Each ``.md`` file whose name matches **any** of the *skill_globs* patterns is copied to a
-        freshly created temporary directory.
+        :meth:`_build_session_config`), then scans ``<workdir>/.agents/skills/`` for
+        **subdirectories**.  Each directory whose name matches **any** of the *skill_globs*
+        patterns is copied into a freshly created temporary directory placed inside *workdir*
+        so that skill paths can be expressed as ``./``-relative references.
 
         Returns a ``(skills, tmp_dir_path)`` tuple.  *skills* is a list of
-        :class:`SkillConfig` objects whose ``path`` points to the copied files.
-        *tmp_dir_path* is the path of the created temporary directory, or ``None`` when no
-        files matched (and therefore no directory was created).  The caller is responsible
-        for removing *tmp_dir_path* once the session has finished.
+        :class:`SkillConfig` objects whose ``path`` is a ``./``-prefixed relative path
+        from the session workdir.  *tmp_dir_path* is the absolute path of the created
+        temporary directory, or ``None`` when no directories matched (and therefore no
+        directory was created).  The caller is responsible for removing *tmp_dir_path*
+        once the session has finished.
 
-        If *skill_globs* is empty, the skills directory does not exist, or no files match
-        the patterns, ``([], None)`` is returned.
+        If *skill_globs* is empty, the skills directory does not exist, or no directories
+        match the patterns, ``([], None)`` is returned.
         """
         if not skill_globs:
             return [], None
@@ -306,24 +308,28 @@ class QueueRunner:
             return [], None
 
         matches = [
-            f
-            for f in skills_dir.iterdir()
-            if f.suffix == ".md" and any(fnmatch.fnmatch(f.name, pattern) for pattern in skill_globs)
+            d
+            for d in skills_dir.iterdir()
+            if d.is_dir() and any(fnmatch.fnmatch(d.name, pattern) for pattern in skill_globs)
         ]
         if not matches:
             return [], None
 
-        tmp_dir = Path(tempfile.mkdtemp(prefix="skills-"))
+        tmp_dir = Path(tempfile.mkdtemp(prefix=".skills-", dir=base))
         result: list[SkillConfig] = []
         try:
             for src in matches:
                 dst = tmp_dir / src.name
                 try:
-                    shutil.copy2(src, dst)
+                    shutil.copytree(src, dst)
                 except OSError:
-                    logger.warning("skill_globs: failed to copy skill file %s for agent %s", src.name, info.label)
+                    logger.warning(
+                        "skill_globs: failed to copy skill directory %s for agent %s",
+                        src.name,
+                        info.label,
+                    )
                     raise
-                result.append(SkillConfig(name=src.stem, path=str(dst)))
+                result.append(SkillConfig(name=src.name, path=f"./{tmp_dir.name}/{src.name}"))
         except Exception:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise

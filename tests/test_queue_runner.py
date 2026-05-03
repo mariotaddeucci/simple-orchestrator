@@ -529,12 +529,17 @@ async def test_run_until_empty_chain_of_three(orch_db, settings):
 
 @pytest.fixture
 def skills_dir(tmp_path: Path) -> Path:
-    """Create a .agents/skills directory populated with sample skill files."""
+    """Create a .agents/skills directory populated with sample skill directories."""
     d = tmp_path / ".agents" / "skills"
     d.mkdir(parents=True)
-    (d / "coding-helper.md").write_text("# Coding helper")
-    (d / "coding-reviewer.md").write_text("# Coding reviewer")
-    (d / "security-audit.md").write_text("# Security audit")
+    # Each skill is a subdirectory
+    (d / "coding-helper").mkdir()
+    (d / "coding-helper" / "instructions.md").write_text("# Coding helper")
+    (d / "coding-reviewer").mkdir()
+    (d / "coding-reviewer" / "instructions.md").write_text("# Coding reviewer")
+    (d / "security-audit").mkdir()
+    (d / "security-audit" / "instructions.md").write_text("# Security audit")
+    # A plain file (not a directory) — must be ignored
     (d / "readme.txt").write_text("not a skill")
     return d
 
@@ -564,13 +569,13 @@ def _make_info(workdir: str | None = None, skill_globs: list[str] | None = None)
 
 
 async def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
-    """Glob patterns select only matching .md files and copy them to a temp dir."""
+    """Glob patterns select only matching skill directories and copy them to a temp dir."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
 
     item = _make_item(workdir=str(tmp_path))
     info = _make_info()
-    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-*.md"], item, info)
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-*"], item, info)
 
     assert tmp_dir is not None
     assert len(results) == 2
@@ -578,8 +583,9 @@ async def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
     assert names == {"coding-helper", "coding-reviewer"}
     for skill in results:
         assert skill.path is not None
-        assert Path(skill.path).exists()
-        assert Path(skill.path).read_text() in ("# Coding helper", "# Coding reviewer")
+        assert skill.path.startswith("./")
+        # The skill directory must exist inside the workdir temp dir
+        assert (tmp_path / skill.path).is_dir()
 
 
 async def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_dir):
@@ -589,7 +595,7 @@ async def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_
 
     item = _make_item(workdir=str(tmp_path))
     info = _make_info()
-    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-helper.md", "security-*.md"], item, info)
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-helper", "security-*"], item, info)
 
     assert tmp_dir is not None
     names = {r.name for r in results}
@@ -597,13 +603,13 @@ async def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_
 
 
 async def test_filter_skills_to_tmpdir_no_match(orch_db, tmp_path, skills_dir):
-    """Returns an empty list and None when no skill files match the patterns."""
+    """Returns an empty list and None when no skill directories match the patterns."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
 
     item = _make_item(workdir=str(tmp_path))
     info = _make_info()
-    results, tmp_dir = runner._filter_skills_to_tmpdir(["nonexistent-*.md"], item, info)
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["nonexistent-*"], item, info)
 
     assert results == []
     assert tmp_dir is None
@@ -616,7 +622,7 @@ async def test_filter_skills_to_tmpdir_missing_skills_dir(orch_db, tmp_path):
 
     item = _make_item(workdir=str(tmp_path))
     info = _make_info()
-    results, tmp_dir = runner._filter_skills_to_tmpdir(["*.md"], item, info)
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["*"], item, info)
 
     assert results == []
     assert tmp_dir is None
@@ -635,8 +641,8 @@ async def test_filter_skills_to_tmpdir_empty_globs(orch_db, tmp_path, skills_dir
     assert tmp_dir is None
 
 
-async def test_filter_skills_ignores_non_md_files(orch_db, tmp_path, skills_dir):
-    """Non-.md files in the skills directory are never included even with wildcard globs."""
+async def test_filter_skills_ignores_non_directory_entries(orch_db, tmp_path, skills_dir):
+    """Plain files in the skills directory are never included even with wildcard globs."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
 
@@ -644,9 +650,11 @@ async def test_filter_skills_ignores_non_md_files(orch_db, tmp_path, skills_dir)
     info = _make_info()
     results, _tmp_dir = runner._filter_skills_to_tmpdir(["*"], item, info)
 
+    # "readme.txt" is a plain file and must not appear
+    assert all(r.name != "readme.txt" for r in results)
     for skill in results:
         assert skill.path is not None
-        assert skill.path.endswith(".md")
+        assert skill.path.startswith("./")
 
 
 async def test_filter_skills_tmpdir_cleanup(orch_db, tmp_path, skills_dir):
@@ -656,7 +664,7 @@ async def test_filter_skills_tmpdir_cleanup(orch_db, tmp_path, skills_dir):
 
     item = _make_item(workdir=str(tmp_path))
     info = _make_info()
-    _results, tmp_dir = runner._filter_skills_to_tmpdir(["*.md"], item, info)
+    _results, tmp_dir = runner._filter_skills_to_tmpdir(["*"], item, info)
 
     assert tmp_dir is not None
     assert Path(tmp_dir).is_dir()
@@ -672,7 +680,7 @@ async def test_filter_skills_uses_info_workdir_when_item_has_none(orch_db, tmp_p
 
     item = _make_item(workdir=None)
     info = _make_info(workdir=str(tmp_path))
-    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-*.md"], item, info)
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-*"], item, info)
 
     assert tmp_dir is not None
     assert len(results) == 2
@@ -691,7 +699,7 @@ async def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skill
         model=None,
         mcp_servers={},
         skills=["builtin-skill"],
-        skill_globs=["coding-*.md"],
+        skill_globs=["coding-*"],
     )
     item = _make_item(workdir=str(tmp_path))
 
@@ -706,12 +714,13 @@ async def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skill
     assert "builtin-skill" in skill_names
     assert "coding-helper" in skill_names
     assert "coding-reviewer" in skill_names
-    # security-audit.md did not match coding-*.md
+    # security-audit did not match coding-*
     assert "security-audit" not in skill_names
 
-    # Filtered skills should carry paths to copied files (now cleaned up, but names remain)
+    # Filtered skills carry ./-prefixed relative paths
     path_skills = [s for s in config.skills if isinstance(s, SkillConfig) and s.path is not None]
     assert len(path_skills) == 2
+    assert all(s.path is not None and s.path.startswith("./") for s in path_skills)
 
 
 async def test_build_session_config_no_skill_globs_unchanged(orch_db, tmp_path, skills_dir):
