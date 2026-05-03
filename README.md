@@ -250,13 +250,9 @@ O servidor MCP expõe as seguintes ferramentas para os agentes:
 
 ---
 
-## Estendendo as ferramentas MCP
+## Custom Tools
 
-É possível adicionar ferramentas customizadas ao servidor MCP do orquestrador de duas formas:
-
-### Opção 1: FastMCP app local (`type = "local"`)
-
-Crie um módulo Python com sua FastMCP app e registre como MCP server local no `orchestrator.toml`. O orquestrador carrega o app via `importlib` sem precisar de um processo extra.
+Adicione ferramentas próprias aos agentes criando uma **FastMCP app** e registrando-a como MCP server local no `orchestrator.toml`. O orquestrador carrega o app via `importlib`, sem precisar de um processo extra.
 
 ```python
 # my_tools/server.py
@@ -269,23 +265,36 @@ async def fetch_jira_ticket(ticket_id: str) -> str:
     """Busca detalhes de um ticket no Jira."""
     # ... implementação ...
     return f"Ticket {ticket_id}: ..."
+
+@mcp.tool()
+async def post_slack_message(channel: str, text: str) -> str:
+    """Envia uma mensagem para um canal do Slack."""
+    # ... implementação ...
+    return "ok"
 ```
 
 ```toml
-# orchestrator.toml
+# orchestrator.toml — disponível para todos os agentes
 [mcp_servers.my_tools]
 type        = "local"
 import_path = "my_tools.server:mcp"
+
+# Ou apenas para um agente específico:
+# [agents.delegator.mcp_servers.my_tools]
+# type        = "local"
+# import_path = "my_tools.server:mcp"
 ```
 
-Esse MCP ficará disponível para todos os agentes (se declarado globalmente) ou apenas para um agente específico (se declarado em `[agents.<id>.mcp_servers.my_tools]`).
+O valor de `import_path` segue a notação `"modulo.caminho:atributo"` — o atributo deve ser uma instância de `FastMCP`.
 
-### Opção 2: Servidor MCP externo via stdio ou SSE
+---
 
-Você pode apontar para qualquer servidor MCP compatível:
+## Servidores MCP externos
+
+Para conectar ferramentas já empacotadas como servidores MCP independentes, use os tipos `stdio`, `sse` ou `http`:
 
 ```toml
-# Via subprocesso (stdio)
+# Via subprocesso (stdio) — ex.: servidor oficial do GitHub
 [mcp_servers.github]
 type    = "stdio"
 command = "npx"
@@ -294,8 +303,8 @@ env     = { GITHUB_TOKEN = "ghp_..." }
 
 # Via SSE (servidor remoto)
 [mcp_servers.my_api]
-type = "sse"
-url  = "https://my-mcp-server.example.com/sse"
+type    = "sse"
+url     = "https://my-mcp-server.example.com/sse"
 headers = { Authorization = "Bearer token" }
 
 # Via HTTP (Streamable HTTP transport)
@@ -303,6 +312,8 @@ headers = { Authorization = "Bearer token" }
 type = "http"
 url  = "https://my-mcp-server.example.com/mcp"
 ```
+
+Assim como as custom tools, esses servidores podem ser declarados globalmente (para todos os agentes) ou por agente individual.
 
 ---
 
