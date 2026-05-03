@@ -5,8 +5,9 @@ or :func:`list_skill_names` to enumerate all available skill names.
 
 Bundled skills
 --------------
-- ``queue-tasks``  — how to add and monitor tasks in the orchestrator queue.
-- ``memory-tool``  — how to save, list, retrieve, and delete agent memories.
+- ``queue-tasks``    — how to add and monitor tasks in the orchestrator queue.
+- ``memory-tool``    — how to save, list, retrieve, and delete agent memories.
+- ``task-executor``  — how to read the current task and record a session note (for executing agents).
 
 Example (Python)::
 
@@ -17,7 +18,7 @@ Example (Python)::
 from pathlib import Path
 
 _SKILLS_DIR = Path(__file__).parent
-_SKILL_NAMES = ("queue-tasks", "memory-tool")
+_SKILL_NAMES = ("queue-tasks", "memory-tool", "task-executor")
 
 
 def list_skill_names() -> tuple[str, ...]:
