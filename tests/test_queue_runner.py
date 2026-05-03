@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from simple_orchestrator.models.mcp import McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.queue_item import QueueItem
 from simple_orchestrator.models.session import SessionConfig, SessionRecord
+from simple_orchestrator.models.skill import SkillConfig
 from simple_orchestrator.queue_runner import QueueRunner, _AgentInfo
 from simple_orchestrator.settings import OrchestratorSettings
 from simple_orchestrator.vendors.base import BaseVendor
@@ -519,3 +521,143 @@ async def test_run_until_empty_chain_of_three(orch_db, settings):
         assert result.status == "completed", f"{task_id} has status {result.status}"
 
     assert vendor.executed_prompts == ["task-a", "task-b", "task-c"]
+
+
+# ── skill_globs tests ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def skills_dir(tmp_path: Path) -> Path:
+    """Create a .agents/skills directory populated with sample skill files."""
+    d = tmp_path / ".agents" / "skills"
+    d.mkdir(parents=True)
+    (d / "coding-helper.md").write_text("# Coding helper")
+    (d / "coding-reviewer.md").write_text("# Coding reviewer")
+    (d / "security-audit.md").write_text("# Security audit")
+    (d / "readme.txt").write_text("not a skill")
+    return d
+
+
+async def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
+    """Glob patterns select only matching .md files and copy them to a temp dir."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    workdir = str(tmp_path)
+    results = runner._filter_skills_to_tmpdir(["coding-*.md"], workdir)
+
+    assert len(results) == 2
+    names = {r.name for r in results}
+    assert names == {"coding-helper", "coding-reviewer"}
+    for skill in results:
+        assert skill.path is not None
+        assert Path(skill.path).exists()
+        assert Path(skill.path).read_text() in ("# Coding helper", "# Coding reviewer")
+
+
+async def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_dir):
+    """Multiple glob patterns are ORed together."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    results = runner._filter_skills_to_tmpdir(["coding-helper.md", "security-*.md"], str(tmp_path))
+
+    names = {r.name for r in results}
+    assert names == {"coding-helper", "security-audit"}
+
+
+async def test_filter_skills_to_tmpdir_no_match(orch_db, tmp_path, skills_dir):
+    """Returns an empty list when no skill files match the patterns."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    results = runner._filter_skills_to_tmpdir(["nonexistent-*.md"], str(tmp_path))
+
+    assert results == []
+
+
+async def test_filter_skills_to_tmpdir_missing_skills_dir(orch_db, tmp_path):
+    """Returns an empty list when the .agents/skills directory does not exist."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    results = runner._filter_skills_to_tmpdir(["*.md"], str(tmp_path))
+
+    assert results == []
+
+
+async def test_filter_skills_ignores_non_md_files(orch_db, tmp_path, skills_dir):
+    """Non-.md files in the skills directory are never included even with wildcard globs."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    results = runner._filter_skills_to_tmpdir(["*"], str(tmp_path))
+
+    for skill in results:
+        assert skill.path is not None
+        assert skill.path.endswith(".md")
+
+
+async def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skills_dir):
+    """_build_session_config merges glob-filtered skills into the session config."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir=str(tmp_path),
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=["builtin-skill"],
+        skill_globs=["coding-*.md"],
+    )
+    item = QueueItem(
+        id=str(ULID()),
+        agent_id="any",
+        prompt="task",
+        status="running",
+        created_at=datetime.now(UTC),
+    )
+
+    config = runner._build_session_config(item, info)
+
+    skill_names = [s if isinstance(s, str) else s.name for s in config.skills]
+    assert "builtin-skill" in skill_names
+    assert "coding-helper" in skill_names
+    assert "coding-reviewer" in skill_names
+    # security-audit.md did not match coding-*.md
+    assert "security-audit" not in skill_names
+
+    # Filtered skills should carry paths to copied files
+    path_skills = [s for s in config.skills if isinstance(s, SkillConfig) and s.path is not None]
+    assert len(path_skills) == 2
+
+
+async def test_build_session_config_no_skill_globs_unchanged(orch_db, tmp_path, skills_dir):
+    """When skill_globs is empty no filtering is performed."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir=str(tmp_path),
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=["existing-skill"],
+        skill_globs=[],
+    )
+    item = QueueItem(
+        id=str(ULID()),
+        agent_id="any",
+        prompt="task",
+        status="running",
+        created_at=datetime.now(UTC),
+    )
+
+    config = runner._build_session_config(item, info)
+
+    assert config.skills == ["existing-skill"]

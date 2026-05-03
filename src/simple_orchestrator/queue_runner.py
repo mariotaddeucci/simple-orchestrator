@@ -1,12 +1,17 @@
 import asyncio
 import contextlib
+import fnmatch
 import logging
-from dataclasses import dataclass
+import shutil
+import tempfile
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .db.orchestrator import OrchestratorDB
 from .models.queue_item import QueueItem
 from .models.session import SessionConfig
+from .models.skill import SkillConfig
 from .settings import AgentSettings, OrchestratorSettings
 from .vendors.base import BaseVendor
 
@@ -23,6 +28,7 @@ class _AgentInfo:
     mcp_servers: dict
     skills: list
     timeout_minutes: float | None = None
+    skill_globs: list[str] = field(default_factory=list)
 
 
 class QueueRunner:
@@ -238,6 +244,9 @@ class QueueRunner:
         # item.workdir takes priority over the agent-level default; None means
         # BaseVendor.run() will create a temporary directory for this session.
         workdir = item.workdir if item.workdir is not None else info.workdir
+        if info.skill_globs:
+            filtered = self._filter_skills_to_tmpdir(info.skill_globs, workdir)
+            merged_skills = merged_skills + filtered
         return SessionConfig(
             prompt=item.prompt,
             model=info.model,
@@ -245,6 +254,40 @@ class QueueRunner:
             mcp_servers=merged_mcp,
             skills=merged_skills,
         )
+
+    def _filter_skills_to_tmpdir(self, skill_globs: list[str], workdir: str | None) -> list[SkillConfig]:
+        """Filter `.agents/skills/*.md` files by glob patterns and copy matches to a temp dir.
+
+        Scans `<workdir>/.agents/skills/` (falling back to `.agents/skills/` relative to the
+        current working directory when *workdir* is ``None`` or the directory does not exist).
+        Each ``.md`` file whose name matches **any** of the *skill_globs* patterns is copied to a
+        freshly created temporary directory. Returns a list of :class:`SkillConfig` objects whose
+        ``path`` points to the copied files so that only the filtered skills are visible to the agent.
+
+        If the skills directory does not exist or no files match the patterns an empty list is
+        returned and no temporary directory is created.
+        """
+        base = Path(workdir) if workdir else Path.cwd()
+        skills_dir = base / ".agents" / "skills"
+        if not skills_dir.is_dir():
+            return []
+
+        matches = [
+            f
+            for f in skills_dir.iterdir()
+            if f.suffix == ".md" and any(fnmatch.fnmatch(f.name, pattern) for pattern in skill_globs)
+        ]
+        if not matches:
+            return []
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="skills-"))
+        result: list[SkillConfig] = []
+        for src in matches:
+            dst = tmp_dir / src.name
+            shutil.copy2(src, dst)
+            result.append(SkillConfig(name=src.stem, path=str(dst)))
+        logger.debug("skill_globs filtered %d skill(s) into %s", len(result), tmp_dir)
+        return result
 
     # ── agent resolution ──────────────────────────────────────────────────────
 
@@ -261,6 +304,7 @@ class QueueRunner:
                 mcp_servers=dict(agent_s.mcp_servers),
                 skills=list(agent_s.skills),
                 timeout_minutes=agent_s.task_timeout_minutes,
+                skill_globs=list(agent_s.skill_globs),
             )
 
         agent_r = await self._db.get_agent(agent_id)

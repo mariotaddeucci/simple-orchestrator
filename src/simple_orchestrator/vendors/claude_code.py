@@ -91,7 +91,11 @@ def _map_mcp_servers(
 
 
 def _map_skills(skills: list[str | SkillConfig]) -> list[str]:
-    return [s if isinstance(s, str) else s.name for s in skills if isinstance(s, str) or s.enabled]
+    return [
+        s if isinstance(s, str) else (s.path if s.path is not None else s.name)
+        for s in skills
+        if isinstance(s, str) or s.enabled
+    ]
 
 
 def _map_agents(agents: dict[str, AgentConfig]) -> dict[str, AgentDefinition]:
