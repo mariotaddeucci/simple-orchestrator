@@ -73,6 +73,15 @@ async def _build_agent_nickname_map(db: OrchestratorDB) -> dict[str, str | None]
     return result
 
 
+async def _get_agent_nickname(db: OrchestratorDB, agent_id: str) -> str | None:
+    """Return the nickname for a single agent, checking config then DB."""
+    settings = _get_settings()
+    if agent_id in settings.agents:
+        return settings.agents[agent_id].nickname
+    agent = await db.get_agent(agent_id)
+    return agent.nickname if agent else None
+
+
 @mcp.tool()
 async def list_agents(
     vendor: Annotated[
@@ -152,7 +161,7 @@ async def enqueue_task(
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         item = await db.enqueue(agent_id, prompt, depends_on=depends_on)
-        agent_nickname = (await _build_agent_nickname_map(db)).get(agent_id)
+        agent_nickname = await _get_agent_nickname(db, agent_id)
     return json.dumps(
         {
             "task_id": item.id,
@@ -301,7 +310,7 @@ async def get_task(
         item = await db.get_queue_item(task_id)
         if not item:
             return json.dumps({"error": f"Task {task_id!r} not found"})
-        agent_nickname = (await _build_agent_nickname_map(db)).get(item.agent_id)
+        agent_nickname = await _get_agent_nickname(db, item.agent_id)
 
     return json.dumps(
         {
