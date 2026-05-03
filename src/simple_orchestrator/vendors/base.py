@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import tempfile
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -25,11 +26,14 @@ class BaseVendor(ABC):
 
     async def run(self, config: SessionConfig) -> str:
         session_id = str(ULID())
+        workdir = config.workdir if config.workdir is not None else tempfile.mkdtemp()
+        if workdir != config.workdir:
+            config = config.model_copy(update={"workdir": workdir})
         record = SessionRecord(
             id=session_id,
             vendor=self.vendor_name,
             prompt=config.prompt,
-            workdir=config.workdir,
+            workdir=workdir,
             started_at=datetime.now(UTC),
             status="running",
         )

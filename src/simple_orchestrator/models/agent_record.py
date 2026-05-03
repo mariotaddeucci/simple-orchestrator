@@ -10,5 +10,5 @@ class AgentRecord(BaseModel):
     prompt: str
     model: str | None = None
     vendor: str
-    workdir: str = "."
+    workdir: str | None = None
     created_at: datetime
