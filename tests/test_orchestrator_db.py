@@ -228,10 +228,11 @@ async def test_cron_state_upsert(db):
     assert result.replace(tzinfo=UTC) == t2
 
 
-async def test_enqueue_agent_nickname_propagated(db):
+async def test_enqueue_agent_nickname_on_agent(db):
     agent = await db.register_agent(name="Named Agent", prompt="p", vendor="v", nickname="my-nick")
+    assert agent.nickname == "my-nick"
     item = await db.enqueue(agent.id, "some task")
-    assert item.agent_nickname == "my-nick"
+    assert item.agent_id == agent.id
 
 
 async def test_enqueue_with_workdir(db):

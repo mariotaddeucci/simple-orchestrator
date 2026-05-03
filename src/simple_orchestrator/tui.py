@@ -113,14 +113,14 @@ class QueueTable(DataTable):
         for col_id, label in cols:
             self._col_keys[col_id] = self.add_column(label, key=col_id)
 
-    def refresh_rows(self, items: list[QueueItem]) -> None:
+    def refresh_rows(self, items: list[QueueItem], agent_labels: dict[str, str]) -> None:
         self.clear()
         if not items:
             return
 
         if self._mode == "pending":
             for item in items:
-                agent = item.agent_nickname or item.agent_id
+                agent = agent_labels.get(item.agent_id, item.agent_id)
                 self.add_row(
                     _styled(item.id[-8:], item.status),
                     agent,
@@ -129,7 +129,7 @@ class QueueTable(DataTable):
                 )
         elif self._mode == "running":
             for item in items:
-                agent = item.agent_nickname or item.agent_id
+                agent = agent_labels.get(item.agent_id, item.agent_id)
                 self.add_row(
                     _styled(item.id[-8:], item.status),
                     agent,
@@ -139,7 +139,7 @@ class QueueTable(DataTable):
                 )
         else:  # finished
             for item in items:
-                agent = item.agent_nickname or item.agent_id
+                agent = agent_labels.get(item.agent_id, item.agent_id)
                 self.add_row(
                     item.id[-8:],
                     agent,
@@ -241,13 +241,17 @@ class OrchestratorTUI(App[None]):
         finished.sort(key=lambda i: i.ended_at or datetime.min.replace(tzinfo=UTC), reverse=True)
         finished = finished[:_FINISHED_LIMIT]
 
+        # Build agent label map: prefer nickname over name, fall back to agent_id in display
+        db_agents = await self._db.list_agents()
+        agent_labels: dict[str, str] = {a.id: a.nickname or a.name for a in db_agents}
+
         pending_table = self.query_one("#pending-table", QueueTable)
         running_table = self.query_one("#running-table", QueueTable)
         finished_table = self.query_one("#finished-table", QueueTable)
 
-        pending_table.refresh_rows(pending)
-        running_table.refresh_rows(running)
-        finished_table.refresh_rows(finished)
+        pending_table.refresh_rows(pending, agent_labels)
+        running_table.refresh_rows(running, agent_labels)
+        finished_table.refresh_rows(finished, agent_labels)
 
         # Update section labels with counts
         self.query_one(".section-label.pending", Label).update(f"⏳  PENDING  [{len(pending)}]")
