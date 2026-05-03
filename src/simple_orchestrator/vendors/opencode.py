@@ -42,7 +42,7 @@ class OpenCodeVendor(BaseVendor):
                         name=model_meta.name or model_id,
                         vendor="opencode",
                         provider=provider_name,
-                    )
+                    ),
                 )
         return models
 

@@ -14,17 +14,20 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from textual.app import App, ComposeResult
-from textual.binding import BindingType
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Label
-from textual.widgets._data_table import ColumnKey
 
 from .db.orchestrator import OrchestratorDB
-from .models.queue_item import QueueItem
 from .settings import OrchestratorSettings
+
+if TYPE_CHECKING:
+    from textual.binding import BindingType
+    from textual.widgets._data_table import ColumnKey
+
+    from .models.queue_item import QueueItem
 
 _REFRESH_INTERVAL = 2.0  # seconds
 _FINISHED_LIMIT = 20  # how many recent finished items to display

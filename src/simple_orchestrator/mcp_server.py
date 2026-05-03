@@ -99,7 +99,7 @@ async def list_agents(
                 "workdir": agent_settings.workdir,
                 "description": _prompt_description(prompt_text),
                 "source": "config",
-            }
+            },
         )
         seen_ids.add(agent_id)
 
@@ -116,7 +116,7 @@ async def list_agents(
                 "workdir": agent.workdir,
                 "description": _prompt_description(agent.prompt),
                 "source": "database",
-            }
+            },
         )
 
     return json.dumps(results, indent=2, default=str)
@@ -151,7 +151,7 @@ async def enqueue_task(
             "status": item.status,
             "depends_on": item.depends_on,
             "created_at": item.created_at.isoformat(),
-        }
+        },
     )
 
 
@@ -241,7 +241,7 @@ async def enqueue_tasks(
                     "agent_id": item.agent_id,
                     "status": item.status,
                     "depends_on": item.depends_on,
-                }
+                },
             )
 
     return json.dumps({"enqueued": enqueued}, indent=2)
@@ -275,7 +275,7 @@ async def list_tasks(
                 "created_at": item.created_at.isoformat(),
                 "started_at": item.started_at.isoformat() if item.started_at else None,
                 "ended_at": item.ended_at.isoformat() if item.ended_at else None,
-            }
+            },
         )
     return json.dumps(results, indent=2)
 
@@ -304,7 +304,7 @@ async def get_task(
             "created_at": item.created_at.isoformat(),
             "started_at": item.started_at.isoformat() if item.started_at else None,
             "ended_at": item.ended_at.isoformat() if item.ended_at else None,
-        }
+        },
     )
 
 
@@ -327,7 +327,7 @@ async def cancel_task(
             "previous_status": item_before.status,
             "current_status": item_after.status if item_after else "unknown",
             "cancelled": item_after.status == "cancelled" if item_after else False,
-        }
+        },
     )
 
 
@@ -353,7 +353,7 @@ async def get_session(
             "started_at": record.started_at.isoformat(),
             "ended_at": record.ended_at.isoformat() if record.ended_at else None,
             "vendor_session_id": record.vendor_session_id,
-        }
+        },
     )
 
 
@@ -388,7 +388,7 @@ async def save_memory(
             "agent_id": record.agent_id,
             "description": record.description,
             "updated_at": record.updated_at.isoformat(),
-        }
+        },
     )
 
 
@@ -431,7 +431,7 @@ async def get_memory(
             "description": record.description,
             "content": record.content,
             "updated_at": record.updated_at.isoformat(),
-        }
+        },
     )
 
 

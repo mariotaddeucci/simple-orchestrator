@@ -46,7 +46,7 @@ class McpLocalConfig(BaseModel):
         if not _IMPORT_PATH_RE.match(self.import_path):
             raise ValueError(
                 f"import_path {self.import_path!r} must be in 'module:attribute' format "
-                "using only valid Python identifiers (e.g. 'my_tools.server:mcp')"
+                "using only valid Python identifiers (e.g. 'my_tools.server:mcp')",
             )
         return self
 

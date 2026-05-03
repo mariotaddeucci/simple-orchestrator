@@ -50,7 +50,7 @@ def _check_agent_id(v: str) -> str:
     if not _AGENT_ID_RE.match(v):
         raise ValueError(
             "must start with an alphanumeric character and contain only "
-            "letters, digits, hyphens, or underscores (max 128 chars)"
+            "letters, digits, hyphens, or underscores (max 128 chars)",
         )
     return v
 
@@ -59,7 +59,7 @@ def _check_alias(v: str) -> str:
     if not _ALIAS_RE.match(v):
         raise ValueError(
             "must start with an alphanumeric character and contain only "
-            "letters, digits, hyphens, or underscores (max 100 chars)"
+            "letters, digits, hyphens, or underscores (max 100 chars)",
         )
     return v
 
@@ -68,7 +68,7 @@ def _check_dep_ref(v: str) -> str:
     if not _DEP_REF_RE.match(v):
         raise ValueError(
             "must start with an alphanumeric character and contain only "
-            "letters, digits, hyphens, or underscores (max 128 chars)"
+            "letters, digits, hyphens, or underscores (max 128 chars)",
         )
     return v
 
