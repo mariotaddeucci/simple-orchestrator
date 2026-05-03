@@ -1,8 +1,10 @@
 """Integration tests for QueueRunner."""
 
 import asyncio
+import shutil
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +16,7 @@ from simple_orchestrator.models.mcp import McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.queue_item import QueueItem
 from simple_orchestrator.models.session import SessionConfig, SessionRecord
+from simple_orchestrator.models.skill import SkillConfig
 from simple_orchestrator.queue_runner import QueueRunner, _AgentInfo
 from simple_orchestrator.settings import OrchestratorSettings
 from simple_orchestrator.vendors.base import BaseVendor
@@ -519,3 +522,224 @@ async def test_run_until_empty_chain_of_three(orch_db, settings):
         assert result.status == "completed", f"{task_id} has status {result.status}"
 
     assert vendor.executed_prompts == ["task-a", "task-b", "task-c"]
+
+
+# ── skill_globs tests ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def skills_dir(tmp_path: Path) -> Path:
+    """Create a .agents/skills directory populated with sample skill directories."""
+    d = tmp_path / ".agents" / "skills"
+    d.mkdir(parents=True)
+    # Each skill is a subdirectory
+    (d / "coding-helper").mkdir()
+    (d / "coding-helper" / "instructions.md").write_text("# Coding helper")
+    (d / "coding-reviewer").mkdir()
+    (d / "coding-reviewer" / "instructions.md").write_text("# Coding reviewer")
+    (d / "security-audit").mkdir()
+    (d / "security-audit" / "instructions.md").write_text("# Security audit")
+    # A plain file (not a directory) — must be ignored
+    (d / "readme.txt").write_text("not a skill")
+    return d
+
+
+def _make_item(workdir: str | None = None) -> QueueItem:
+    return QueueItem(
+        id=str(ULID()),
+        agent_id="any",
+        prompt="task",
+        workdir=workdir,
+        status="running",
+        created_at=datetime.now(UTC),
+    )
+
+
+def _make_info(workdir: str | None = None, skill_globs: list[str] | None = None) -> _AgentInfo:
+    return _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir=workdir,
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=[],
+        skill_globs=skill_globs or [],
+    )
+
+
+async def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
+    """Glob patterns select only matching skill directories and copy them to a temp dir."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-*"], item, info)
+
+    assert tmp_dir is not None
+    assert len(results) == 2
+    names = {r.name for r in results}
+    assert names == {"coding-helper", "coding-reviewer"}
+    for skill in results:
+        assert skill.path is not None
+        assert skill.path.startswith("./")
+        # The skill directory must exist inside the workdir temp dir
+        assert (tmp_path / skill.path).is_dir()
+
+
+async def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_dir):
+    """Multiple glob patterns are ORed together."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-helper", "security-*"], item, info)
+
+    assert tmp_dir is not None
+    names = {r.name for r in results}
+    assert names == {"coding-helper", "security-audit"}
+
+
+async def test_filter_skills_to_tmpdir_no_match(orch_db, tmp_path, skills_dir):
+    """Returns an empty list and None when no skill directories match the patterns."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["nonexistent-*"], item, info)
+
+    assert results == []
+    assert tmp_dir is None
+
+
+async def test_filter_skills_to_tmpdir_missing_skills_dir(orch_db, tmp_path):
+    """Returns an empty list and None when the .agents/skills directory does not exist."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["*"], item, info)
+
+    assert results == []
+    assert tmp_dir is None
+
+
+async def test_filter_skills_to_tmpdir_empty_globs(orch_db, tmp_path, skills_dir):
+    """Returns empty list and None when skill_globs is empty (no filtering requested)."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    results, tmp_dir = runner._filter_skills_to_tmpdir([], item, info)
+
+    assert results == []
+    assert tmp_dir is None
+
+
+async def test_filter_skills_ignores_non_directory_entries(orch_db, tmp_path, skills_dir):
+    """Plain files in the skills directory are never included even with wildcard globs."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    results, _tmp_dir = runner._filter_skills_to_tmpdir(["*"], item, info)
+
+    # "readme.txt" is a plain file and must not appear
+    assert all(r.name != "readme.txt" for r in results)
+    for skill in results:
+        assert skill.path is not None
+        assert skill.path.startswith("./")
+
+
+async def test_filter_skills_tmpdir_cleanup(orch_db, tmp_path, skills_dir):
+    """The caller can clean up the returned temp directory after the session."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=str(tmp_path))
+    info = _make_info()
+    _results, tmp_dir = runner._filter_skills_to_tmpdir(["*"], item, info)
+
+    assert tmp_dir is not None
+    assert Path(tmp_dir).is_dir()
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    assert not Path(tmp_dir).exists()
+
+
+async def test_filter_skills_uses_info_workdir_when_item_has_none(orch_db, tmp_path, skills_dir):
+    """Falls back to agent workdir when item.workdir is None."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    item = _make_item(workdir=None)
+    info = _make_info(workdir=str(tmp_path))
+    results, tmp_dir = runner._filter_skills_to_tmpdir(["coding-*"], item, info)
+
+    assert tmp_dir is not None
+    assert len(results) == 2
+
+
+async def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skills_dir):
+    """_build_session_config with extra_skills merges filtered skills into the session config."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir=str(tmp_path),
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=["builtin-skill"],
+        skill_globs=["coding-*"],
+    )
+    item = _make_item(workdir=str(tmp_path))
+
+    filtered_skills, tmp_dir = runner._filter_skills_to_tmpdir(info.skill_globs, item, info)
+    try:
+        config = runner._build_session_config(item, info, extra_skills=filtered_skills)
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    skill_names = [s if isinstance(s, str) else s.name for s in config.skills]
+    assert "builtin-skill" in skill_names
+    assert "coding-helper" in skill_names
+    assert "coding-reviewer" in skill_names
+    # security-audit did not match coding-*
+    assert "security-audit" not in skill_names
+
+    # Filtered skills carry ./-prefixed relative paths
+    path_skills = [s for s in config.skills if isinstance(s, SkillConfig) and s.path is not None]
+    assert len(path_skills) == 2
+    assert all(s.path is not None and s.path.startswith("./") for s in path_skills)
+
+
+async def test_build_session_config_no_skill_globs_unchanged(orch_db, tmp_path, skills_dir):
+    """When skill_globs is empty no filtering is performed."""
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {}, settings=settings)
+
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir=str(tmp_path),
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=["existing-skill"],
+        skill_globs=[],
+    )
+    item = _make_item()
+
+    config = runner._build_session_config(item, info)
+
+    assert config.skills == ["existing-skill"]

@@ -143,6 +143,7 @@ class AgentSettings(BaseModel):
         Annotated[McpConfig, Field(discriminator="type")],
     ] = Field(default_factory=dict)
     skills: list[str | SkillConfig] = Field(default_factory=list)
+    skill_globs: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_prompt_source(self) -> "AgentSettings":

@@ -1,12 +1,17 @@
 import asyncio
 import contextlib
+import fnmatch
 import logging
-from dataclasses import dataclass
+import shutil
+import tempfile
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .db.orchestrator import OrchestratorDB
 from .models.queue_item import QueueItem
 from .models.session import SessionConfig
+from .models.skill import SkillConfig
 from .settings import AgentSettings, OrchestratorSettings
 from .vendors.base import BaseVendor
 
@@ -23,6 +28,7 @@ class _AgentInfo:
     mcp_servers: dict
     skills: list
     timeout_minutes: float | None = None
+    skill_globs: list[str] = field(default_factory=list)
 
 
 class QueueRunner:
@@ -140,32 +146,42 @@ class QueueRunner:
             await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
-        config = self._build_session_config(item, info)
-        effective_timeout = (
-            info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
-        )
+        filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
         try:
-            if item.session_id:
-                session_id = await vendor.resume(item.session_id, config)
-            else:
-                session_id = await vendor.run(config)
-                await self._db.update_queue_item(item.id, status="running", session_id=session_id)
-
+            config = self._build_session_config(item, info, extra_skills=filtered_skills)
+            effective_timeout = (
+                info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
+            )
             try:
-                async with asyncio.timeout(effective_timeout * 60):
-                    record = await vendor.wait(session_id)
-                final = record.status if record else "failed"
-                queue_status = final if final in ("completed", "failed", "killed") else "failed"
-            except TimeoutError:
-                logger.warning("zombie %s [%s] timed out after %.1f minutes", item.id, info.label, effective_timeout)
-                await vendor.kill(session_id)
-                queue_status = "failed"
-        except Exception:
-            logger.exception("zombie %s [%s] raised an error", item.id, info.label)
-            queue_status = "failed"
+                if item.session_id:
+                    session_id = await vendor.resume(item.session_id, config)
+                else:
+                    session_id = await vendor.run(config)
+                    await self._db.update_queue_item(item.id, status="running", session_id=session_id)
 
-        await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
-        logger.info("zombie %s [%s] → %s", item.id, info.label, queue_status)
+                try:
+                    async with asyncio.timeout(effective_timeout * 60):
+                        record = await vendor.wait(session_id)
+                    final = record.status if record else "failed"
+                    queue_status = final if final in ("completed", "failed", "killed") else "failed"
+                except TimeoutError:
+                    logger.warning(
+                        "zombie %s [%s] timed out after %.1f minutes",
+                        item.id,
+                        info.label,
+                        effective_timeout,
+                    )
+                    await vendor.kill(session_id)
+                    queue_status = "failed"
+            except Exception:
+                logger.exception("zombie %s [%s] raised an error", item.id, info.label)
+                queue_status = "failed"
+
+            await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
+            logger.info("zombie %s [%s] → %s", item.id, info.label, queue_status)
+        finally:
+            if tmp_skills_dir:
+                shutil.rmtree(tmp_skills_dir, ignore_errors=True)
 
     # ── internal loop ─────────────────────────────────────────────────────────
 
@@ -207,34 +223,46 @@ class QueueRunner:
             await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
-        config = self._build_session_config(item, info)
-        effective_timeout = (
-            info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
-        )
+        filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
         try:
-            session_id = await vendor.run(config)
-            await self._db.update_queue_item(item.id, status="running", session_id=session_id)
-
+            config = self._build_session_config(item, info, extra_skills=filtered_skills)
+            effective_timeout = (
+                info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
+            )
             try:
-                async with asyncio.timeout(effective_timeout * 60):
-                    record = await vendor.wait(session_id)
-                final = record.status if record else "failed"
-                queue_status = final if final in ("completed", "failed", "killed") else "failed"
-            except TimeoutError:
-                logger.warning("queue %s [%s] timed out after %.1f minutes", item.id, info.label, effective_timeout)
-                await vendor.kill(session_id)
+                session_id = await vendor.run(config)
+                await self._db.update_queue_item(item.id, status="running", session_id=session_id)
+
+                try:
+                    async with asyncio.timeout(effective_timeout * 60):
+                        record = await vendor.wait(session_id)
+                    final = record.status if record else "failed"
+                    queue_status = final if final in ("completed", "failed", "killed") else "failed"
+                except TimeoutError:
+                    logger.warning("queue %s [%s] timed out after %.1f minutes", item.id, info.label, effective_timeout)
+                    await vendor.kill(session_id)
+                    queue_status = "failed"
+            except Exception:
+                logger.exception("queue %s [%s] raised an error", item.id, info.label)
                 queue_status = "failed"
-        except Exception:
-            logger.exception("queue %s [%s] raised an error", item.id, info.label)
-            queue_status = "failed"
 
-        await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
-        logger.info("queue %s [%s] → %s", item.id, info.label, queue_status)
+            await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
+            logger.info("queue %s [%s] → %s", item.id, info.label, queue_status)
+        finally:
+            if tmp_skills_dir:
+                shutil.rmtree(tmp_skills_dir, ignore_errors=True)
 
-    def _build_session_config(self, item: QueueItem, info: _AgentInfo) -> SessionConfig:
+    def _build_session_config(
+        self,
+        item: QueueItem,
+        info: _AgentInfo,
+        extra_skills: list[SkillConfig] | None = None,
+    ) -> SessionConfig:
         """Global MCPs/skills from settings merged with agent-specific ones."""
         merged_mcp = {**self._settings.mcp_servers, **info.mcp_servers}
-        merged_skills = list(self._settings.skills) + list(info.skills)
+        merged_skills: list = list(self._settings.skills) + list(info.skills)
+        if extra_skills:
+            merged_skills = merged_skills + extra_skills
         # item.workdir takes priority over the agent-level default; None means
         # BaseVendor.run() will create a temporary directory for this session.
         workdir = item.workdir if item.workdir is not None else info.workdir
@@ -245,6 +273,68 @@ class QueueRunner:
             mcp_servers=merged_mcp,
             skills=merged_skills,
         )
+
+    def _filter_skills_to_tmpdir(
+        self,
+        skill_globs: list[str],
+        item: QueueItem,
+        info: _AgentInfo,
+    ) -> tuple[list[SkillConfig], str | None]:
+        """Filter `.agents/skills/` directories by glob patterns and copy matches to a temp dir.
+
+        Determines the effective workdir from *item* and *info* (same priority as
+        :meth:`_build_session_config`), then scans ``<workdir>/.agents/skills/`` for
+        **subdirectories**.  Each directory whose name matches **any** of the *skill_globs*
+        patterns is copied into a freshly created temporary directory placed inside *workdir*
+        so that skill paths can be expressed as ``./``-relative references.
+
+        Returns a ``(skills, tmp_dir_path)`` tuple.  *skills* is a list of
+        :class:`SkillConfig` objects whose ``path`` is a ``./``-prefixed relative path
+        from the session workdir.  *tmp_dir_path* is the absolute path of the created
+        temporary directory, or ``None`` when no directories matched (and therefore no
+        directory was created).  The caller is responsible for removing *tmp_dir_path*
+        once the session has finished.
+
+        If *skill_globs* is empty, the skills directory does not exist, or no directories
+        match the patterns, ``([], None)`` is returned.
+        """
+        if not skill_globs:
+            return [], None
+
+        workdir = item.workdir if item.workdir is not None else info.workdir
+        base = Path(workdir) if workdir else Path.cwd()
+        skills_dir = base / ".agents" / "skills"
+        if not skills_dir.is_dir():
+            return [], None
+
+        matches = [
+            d
+            for d in skills_dir.iterdir()
+            if d.is_dir() and any(fnmatch.fnmatch(d.name, pattern) for pattern in skill_globs)
+        ]
+        if not matches:
+            return [], None
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix=".skills-", dir=base))
+        result: list[SkillConfig] = []
+        try:
+            for src in matches:
+                dst = tmp_dir / src.name
+                try:
+                    shutil.copytree(src, dst)
+                except OSError:
+                    logger.warning(
+                        "skill_globs: failed to copy skill directory %s for agent %s",
+                        src.name,
+                        info.label,
+                    )
+                    raise
+                result.append(SkillConfig(name=src.name, path=f"./{tmp_dir.name}/{src.name}"))
+        except Exception:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
+        logger.debug("skill_globs filtered %d skill(s) into %s", len(result), tmp_dir)
+        return result, str(tmp_dir)
 
     # ── agent resolution ──────────────────────────────────────────────────────
 
@@ -261,6 +351,7 @@ class QueueRunner:
                 mcp_servers=dict(agent_s.mcp_servers),
                 skills=list(agent_s.skills),
                 timeout_minutes=agent_s.task_timeout_minutes,
+                skill_globs=list(agent_s.skill_globs),
             )
 
         agent_r = await self._db.get_agent(agent_id)
