@@ -22,6 +22,7 @@ class _AgentInfo:
     model: str | None
     mcp_servers: dict
     skills: list
+    timeout_minutes: float | None = None
 
 
 class QueueRunner:
@@ -130,14 +131,22 @@ class QueueRunner:
             return
 
         config = self._build_session_config(item, info)
-
+        effective_timeout = (
+            info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
+        )
         try:
             session_id = await vendor.run(config)
             await self._db.update_queue_item(item.id, status="running", session_id=session_id)
 
-            record = await vendor.wait(session_id)
-            final = record.status if record else "failed"
-            queue_status = final if final in ("completed", "failed", "killed") else "failed"
+            try:
+                async with asyncio.timeout(effective_timeout * 60):
+                    record = await vendor.wait(session_id)
+                final = record.status if record else "failed"
+                queue_status = final if final in ("completed", "failed", "killed") else "failed"
+            except TimeoutError:
+                logger.warning("queue %s [%s] timed out after %.1f minutes", item.id, info.label, effective_timeout)
+                await vendor.kill(session_id)
+                queue_status = "failed"
         except Exception:
             logger.exception("queue %s [%s] raised an error", item.id, info.label)
             queue_status = "failed"
@@ -174,6 +183,7 @@ class QueueRunner:
                 model=agent_s.model,
                 mcp_servers=dict(agent_s.mcp_servers),
                 skills=list(agent_s.skills),
+                timeout_minutes=agent_s.task_timeout_minutes,
             )
 
         agent_r = await self._db.get_agent(agent_id)
