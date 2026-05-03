@@ -135,6 +135,7 @@ class AgentSettings(BaseModel):
     vendor: str
     model: str | None = None
     workdir: str | None = None
+    task_timeout_minutes: float | None = None
     prompt: str | None = None
     prompt_file: Path | None = None
     mcp_servers: dict[
@@ -176,6 +177,7 @@ class OrchestratorSettings(BaseSettings):
     logs_dir: Path = Path("logs")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     max_active_sessions: int = Field(default=4, ge=1)
+    task_timeout_minutes: float = Field(default=30.0, gt=0)
 
     mcp_server_host: str = "127.0.0.1"
     mcp_server_port: int = 8765

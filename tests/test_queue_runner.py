@@ -18,6 +18,9 @@ from simple_orchestrator.queue_runner import QueueRunner, _AgentInfo
 from simple_orchestrator.settings import OrchestratorSettings
 from simple_orchestrator.vendors.base import BaseVendor
 
+# 0.01 seconds expressed in minutes — used to trigger timeouts quickly in tests
+_TEST_TIMEOUT_MINUTES = 1 / 6000
+
 
 class FakeVendor(BaseVendor):
     """Minimal vendor that immediately completes sessions."""
@@ -123,6 +126,7 @@ async def test_process_fails_when_vendor_not_registered(orch_db, settings):
         model=None,
         mcp_servers={},
         skills=[],
+        timeout_minutes=None,
     )
     await runner._process(dequeued, info)
 
@@ -164,6 +168,7 @@ async def test_build_session_config_merges_mcp_and_skills(orch_db):
         model=None,
         mcp_servers=agent_mcp,
         skills=["agent-skill"],
+        timeout_minutes=None,
     )
 
     item = QueueItem(
@@ -187,7 +192,16 @@ async def test_build_session_config_item_workdir_overrides_agent(orch_db):
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
 
-    info = _AgentInfo(label="A", vendor="fake", workdir="/agent-dir", prompt="p", model=None, mcp_servers={}, skills=[])
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir="/agent-dir",
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=[],
+        timeout_minutes=None,
+    )
     item = QueueItem(
         id=str(ULID()),
         agent_id="any",
@@ -206,7 +220,16 @@ async def test_build_session_config_falls_back_to_agent_workdir(orch_db):
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
 
-    info = _AgentInfo(label="A", vendor="fake", workdir="/agent-dir", prompt="p", model=None, mcp_servers={}, skills=[])
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir="/agent-dir",
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=[],
+        timeout_minutes=None,
+    )
     item = QueueItem(
         id=str(ULID()),
         agent_id="any",
@@ -224,7 +247,16 @@ async def test_build_session_config_no_workdir_is_none(orch_db):
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
 
-    info = _AgentInfo(label="A", vendor="fake", workdir=None, prompt="p", model=None, mcp_servers={}, skills=[])
+    info = _AgentInfo(
+        label="A",
+        vendor="fake",
+        workdir=None,
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=[],
+        timeout_minutes=None,
+    )
     item = QueueItem(
         id=str(ULID()),
         agent_id="any",
@@ -235,3 +267,69 @@ async def test_build_session_config_no_workdir_is_none(orch_db):
 
     config = runner._build_session_config(item, info)
     assert config.workdir is None
+
+
+class SlowVendor(FakeVendor):
+    """Vendor that hangs indefinitely until cancelled."""
+
+    async def _run_session(self, session_id: str, config: SessionConfig) -> None:
+        self.executed_prompts.append(config.prompt)
+        await asyncio.sleep(9999)
+
+
+async def test_process_times_out_and_marks_failed(orch_db):
+    """A session that exceeds its timeout is killed and the queue item marked failed."""
+    vendor = SlowVendor(orch_db)
+    agent = await orch_db.register_agent(name="Slow", prompt="p", vendor="fake")
+    item = await orch_db.enqueue(agent.id, "slow task")
+    dequeued = await orch_db.dequeue_next()
+    assert dequeued is not None
+
+    # Use a tiny timeout (1/100th of a second) so the test runs fast
+    info = _AgentInfo(
+        label="Slow",
+        vendor="fake",
+        workdir=None,
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=[],
+        timeout_minutes=_TEST_TIMEOUT_MINUTES,
+    )
+    settings = OrchestratorSettings(max_active_sessions=1)
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+
+    await runner._process(dequeued, info)
+
+    result = await orch_db.get_queue_item(item.id)
+    assert result is not None
+    assert result.status == "failed"
+
+
+async def test_global_timeout_used_when_agent_has_none(orch_db):
+    """When agent timeout_minutes is None, the global settings timeout is used."""
+    vendor = SlowVendor(orch_db)
+    agent = await orch_db.register_agent(name="Slow2", prompt="p", vendor="fake")
+    item = await orch_db.enqueue(agent.id, "slow task 2")
+    dequeued = await orch_db.dequeue_next()
+    assert dequeued is not None
+
+    info = _AgentInfo(
+        label="Slow2",
+        vendor="fake",
+        workdir=None,
+        prompt="p",
+        model=None,
+        mcp_servers={},
+        skills=[],
+        timeout_minutes=None,  # falls back to global
+    )
+    # Global timeout of 0.01 seconds
+    settings = OrchestratorSettings(max_active_sessions=1, task_timeout_minutes=_TEST_TIMEOUT_MINUTES)
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+
+    await runner._process(dequeued, info)
+
+    result = await orch_db.get_queue_item(item.id)
+    assert result is not None
+    assert result.status == "failed"
