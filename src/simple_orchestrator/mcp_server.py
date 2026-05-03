@@ -20,7 +20,6 @@ Or globally (all agents):
 """
 
 import json
-from datetime import UTC, datetime
 from functools import cache
 from typing import Annotated
 
@@ -117,18 +116,18 @@ async def enqueue_task(
     ],
     prompt: Annotated[str, Field(description="Full task description for the agent")],
     depends_on: Annotated[
-        list[str],
+        list[str] | None,
         Field(
             description="Optional list of task IDs that must complete successfully before this task starts. "
             "The task will be skipped until all listed tasks reach 'completed' status. "
             "If any dependency fails or is cancelled, this task is automatically failed too."
         ),
-    ] = [],  # noqa: B006
+    ] = None,
 ) -> str:
     """Add a task to the queue for a specific agent. Returns the task ID and initial status."""
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
-        item = await db.enqueue(agent_id, prompt, depends_on=depends_on or [])
+        item = await db.enqueue(agent_id, prompt, depends_on=depends_on)
     return json.dumps(
         {
             "task_id": item.id,
@@ -198,36 +197,26 @@ async def enqueue_tasks(
     settings = _get_settings()
     enqueued = []
     async with OrchestratorDB(settings.db_path) as db:
-        assert db._conn
         for spec, tid in zip(tasks, task_ids, strict=True):
             # Resolve depends_on: replace aliases with real IDs; pass through bare IDs unchanged.
             resolved_deps = [alias_to_id.get(dep, dep) for dep in spec.depends_on]
 
-            agent = await db.get_agent(spec.agent_id)
-            await db._conn.execute(
-                "INSERT INTO queue (id, agent_id, agent_nickname, prompt, workdir, status, created_at, depends_on) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    tid,
-                    spec.agent_id,
-                    agent.nickname if agent else None,
-                    spec.prompt,
-                    spec.workdir,
-                    "pending",
-                    datetime.now(UTC).isoformat(),
-                    json.dumps(resolved_deps) if resolved_deps else None,
-                ),
+            item = await db.enqueue(
+                spec.agent_id,
+                spec.prompt,
+                workdir=spec.workdir,
+                depends_on=resolved_deps or None,
+                item_id=tid,
             )
             enqueued.append(
                 {
                     "alias": spec.alias,
-                    "task_id": tid,
-                    "agent_id": spec.agent_id,
-                    "status": "pending",
-                    "depends_on": resolved_deps,
+                    "task_id": item.id,
+                    "agent_id": item.agent_id,
+                    "status": item.status,
+                    "depends_on": item.depends_on,
                 }
             )
-        await db._conn.commit()
 
     return json.dumps({"enqueued": enqueued}, indent=2)
 

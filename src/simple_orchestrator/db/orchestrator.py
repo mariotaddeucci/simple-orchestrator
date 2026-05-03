@@ -150,11 +150,12 @@ class OrchestratorDB(SessionHistoryDB):
         prompt: str,
         workdir: str | None = None,
         depends_on: list[str] | None = None,
+        item_id: str | None = None,
     ) -> QueueItem:
         assert self._conn
         agent = await self.get_agent(agent_id)
         item = QueueItem(
-            id=_new_ulid(),
+            id=item_id or _new_ulid(),
             agent_id=agent_id,
             agent_nickname=agent.nickname if agent else None,
             prompt=prompt,
