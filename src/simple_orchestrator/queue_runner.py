@@ -64,6 +64,7 @@ class QueueRunner:
         if self._running:
             return
         self._running = True
+        await self.resume_zombie_sessions()
         self._loop_task = asyncio.create_task(self._loop(), name="queue-runner")
 
     async def stop(self) -> None:
@@ -76,10 +77,12 @@ class QueueRunner:
     async def run_forever(self) -> None:
         """Start the polling loop and block until cancelled."""
         self._running = True
+        await self.resume_zombie_sessions()
         await self._loop()
 
     async def run_until_empty(self) -> None:
         """Block until there are no more pending items."""
+        await self.resume_zombie_sessions()
         while True:
             await self._semaphore.acquire()
             item = await self._db.dequeue_next()
@@ -89,6 +92,74 @@ class QueueRunner:
             task = asyncio.create_task(self._dispatch(item))
             self._dispatch_tasks.add(task)
             task.add_done_callback(self._dispatch_tasks.discard)
+
+    # ── zombie resume ─────────────────────────────────────────────────────────
+
+    async def resume_zombie_sessions(self) -> None:
+        """Resume queue items left in 'running' state from a previous run.
+
+        Called automatically on startup (start / run_forever / run_until_empty)
+        so that sessions interrupted by an application restart are continued
+        from where they stopped rather than left as permanent zombies.
+        """
+        zombie_items = await self._db.list_queue(status="running")
+        if not zombie_items:
+            return
+        logger.info("QueueRunner: found %d zombie session(s), resuming…", len(zombie_items))
+        for item in zombie_items:
+            task = asyncio.create_task(self._resume_zombie(item), name=f"resume-{item.id}")
+            self._dispatch_tasks.add(task)
+            task.add_done_callback(self._dispatch_tasks.discard)
+
+    async def _resume_zombie(self, item: QueueItem) -> None:
+        """Acquire a semaphore slot and resume a single zombie queue item."""
+        await self._semaphore.acquire()
+        workdir = item.workdir or item.id
+        try:
+            async with self._workdir_lock(workdir):
+                await self._resume_process(item)
+        finally:
+            self._semaphore.release()
+
+    async def _resume_process(self, item: QueueItem) -> None:
+        info = await self._resolve_agent(item.agent_id)
+        if not info:
+            logger.error("zombie %s: agent '%s' not found in settings or DB", item.id, item.agent_id)
+            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
+            return
+
+        vendor = self._vendors.get(info.vendor)
+        if not vendor:
+            logger.error("zombie %s [%s]: vendor '%s' not registered", item.id, info.label, info.vendor)
+            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
+            return
+
+        config = self._build_session_config(item, info)
+        effective_timeout = (
+            info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
+        )
+        try:
+            if item.session_id:
+                session_id = await vendor.resume(item.session_id, config)
+            else:
+                session_id = await vendor.run(config)
+                await self._db.update_queue_item(item.id, status="running", session_id=session_id)
+
+            try:
+                async with asyncio.timeout(effective_timeout * 60):
+                    record = await vendor.wait(session_id)
+                final = record.status if record else "failed"
+                queue_status = final if final in ("completed", "failed", "killed") else "failed"
+            except TimeoutError:
+                logger.warning("zombie %s [%s] timed out after %.1f minutes", item.id, info.label, effective_timeout)
+                await vendor.kill(session_id)
+                queue_status = "failed"
+        except Exception:
+            logger.exception("zombie %s [%s] raised an error", item.id, info.label)
+            queue_status = "failed"
+
+        await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
+        logger.info("zombie %s [%s] → %s", item.id, info.label, queue_status)
 
     # ── internal loop ─────────────────────────────────────────────────────────
 
