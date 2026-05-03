@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import subprocess
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,17 +18,16 @@ def _new_ulid() -> str:
     return str(ULID())
 
 
-def _resolve_workdir(workdir: str | None) -> str | None:
+def _resolve_workdir(workdir: str | None) -> str:
     """Return an effective working directory for a queue item.
 
-    - If *workdir* is None, None is returned so the vendor can allocate a
-      per-session temporary directory at run time.
+    - If *workdir* is None, a fresh temporary directory is created.
     - If *workdir* exists and is inside a git repository, the git root is
       returned instead so the agent always starts at the repo root.
     - Otherwise *workdir* is returned unchanged.
     """
     if workdir is None:
-        return None
+        return tempfile.mkdtemp()
 
     path = Path(workdir)
     if path.exists() and path.is_dir():

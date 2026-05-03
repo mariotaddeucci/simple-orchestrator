@@ -1,6 +1,7 @@
 """Integration tests for OrchestratorDB — agents, queue, memory, cron state."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -243,14 +244,15 @@ async def test_enqueue_with_workdir(db):
     assert fetched.workdir == "/my/project"
 
 
-async def test_enqueue_without_workdir_is_none(db):
+async def test_enqueue_without_workdir_creates_temp_dir(db):
     agent = await db.register_agent(name="W", prompt="p", vendor="v")
     item = await db.enqueue(agent.id, "task no workdir")
-    assert item.workdir is None
+    assert item.workdir is not None
+    assert Path(item.workdir).exists()
 
     fetched = await db.get_queue_item(item.id)
     assert fetched is not None
-    assert fetched.workdir is None
+    assert fetched.workdir == item.workdir
 
 
 async def test_sessions_table_accessible_from_orchestrator_db(db):
