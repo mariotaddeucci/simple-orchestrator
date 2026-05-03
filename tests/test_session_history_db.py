@@ -25,7 +25,7 @@ def _make_record(
 
 @pytest.fixture
 async def db(tmp_path):
-    db = SessionHistoryDB(str(tmp_path / "sessions.db"))
+    db = SessionHistoryDB(tmp_path / "sessions.db")
     await db.connect()
     yield db
     await db.close()
@@ -98,7 +98,7 @@ async def test_list_sessions_filtered_by_status(db):
 
 
 async def test_context_manager(tmp_path):
-    async with SessionHistoryDB(str(tmp_path / "ctx.db")) as db:
+    async with SessionHistoryDB(tmp_path / "ctx.db") as db:
         record = _make_record()
         await db.save(record)
         fetched = await db.get(record.id)

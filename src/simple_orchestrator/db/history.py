@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Self
 
 import aiosqlite
@@ -7,7 +8,7 @@ from simple_orchestrator.models.session import SessionRecord
 
 
 class SessionHistoryDB:
-    def __init__(self, db_path: str = "sessions.db"):
+    def __init__(self, db_path: str | Path = "sessions.db"):
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
 

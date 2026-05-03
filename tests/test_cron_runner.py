@@ -12,7 +12,7 @@ from simple_orchestrator.settings import CronSettings, OrchestratorSettings
 
 @pytest.fixture
 async def db(tmp_path):
-    db = OrchestratorDB(str(tmp_path / "cron.db"))
+    db = OrchestratorDB(tmp_path / "cron.db")
     await db.connect()
     yield db
     await db.close()
