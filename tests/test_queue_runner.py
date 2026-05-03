@@ -453,6 +453,7 @@ async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
         )
     )
 
+    # Use a short poll_interval so the background loop doesn't delay the test.
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings, poll_interval=0.05)
     await runner.start()
     await asyncio.sleep(0.2)

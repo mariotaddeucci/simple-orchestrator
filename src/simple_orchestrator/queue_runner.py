@@ -114,7 +114,7 @@ class QueueRunner:
     async def _resume_zombie(self, item: QueueItem) -> None:
         """Acquire a semaphore slot and resume a single zombie queue item."""
         await self._semaphore.acquire()
-        workdir = item.workdir or (item.id)
+        workdir = item.workdir or item.id
         try:
             async with self._workdir_lock(workdir):
                 await self._resume_process(item)
