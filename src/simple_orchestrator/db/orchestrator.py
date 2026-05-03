@@ -1,6 +1,9 @@
 import json
 import sqlite3
+import subprocess
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 
 import aiosqlite
 from ulid import ULID
@@ -13,6 +16,34 @@ from simple_orchestrator.models.queue_item import QueueItem
 
 def _new_ulid() -> str:
     return str(ULID())
+
+
+def _resolve_workdir(workdir: str | None) -> str:
+    """Return an effective working directory for a queue item.
+
+    - If *workdir* is None, a fresh temporary directory is created.
+    - If *workdir* exists and is inside a git repository, the git root is
+      returned instead so the agent always starts at the repo root.
+    - Otherwise *workdir* is returned unchanged.
+    """
+    if workdir is None:
+        return tempfile.mkdtemp()
+
+    path = Path(workdir)
+    if path.exists() and path.is_dir():
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
+                cwd=str(path),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError:
+            pass
+
+    return workdir
 
 
 class OrchestratorDB(SessionHistoryDB):
@@ -159,7 +190,7 @@ class OrchestratorDB(SessionHistoryDB):
             agent_id=agent_id,
             agent_nickname=agent.nickname if agent else None,
             prompt=prompt,
-            workdir=workdir,
+            workdir=_resolve_workdir(workdir),
             status="pending",
             created_at=datetime.now(UTC),
             depends_on=depends_on or [],
