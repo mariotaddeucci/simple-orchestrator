@@ -32,6 +32,7 @@ from .settings import OrchestratorSettings
 from .validators import (
     MAX_DESCRIPTION_LENGTH,
     MAX_MEMORY_CONTENT_LENGTH,
+    MAX_NOTE_LENGTH,
     MAX_PROMPT_LENGTH,
     ValidAgentId,
     ValidAlias,
@@ -292,6 +293,7 @@ async def list_tasks(
                 "status": item.status,
                 "depends_on": item.depends_on,
                 "session_id": item.session_id,
+                "note": item.note,
                 "created_at": item.created_at.isoformat(),
                 "started_at": item.started_at.isoformat() if item.started_at else None,
                 "ended_at": item.ended_at.isoformat() if item.ended_at else None,
@@ -321,6 +323,7 @@ async def get_task(
             "status": item.status,
             "depends_on": item.depends_on,
             "session_id": item.session_id,
+            "note": item.note,
             "created_at": item.created_at.isoformat(),
             "started_at": item.started_at.isoformat() if item.started_at else None,
             "ended_at": item.ended_at.isoformat() if item.ended_at else None,
@@ -375,6 +378,36 @@ async def get_session(
             "vendor_session_id": record.vendor_session_id,
         },
     )
+
+
+@mcp.tool()
+async def add_task_note(
+    task_id: Annotated[
+        ValidULID,
+        Field(description="Task ID to attach the note to (available in ORCHESTRATOR_TASK_ID env var)"),
+    ],
+    note: Annotated[
+        str,
+        Field(
+            description="Short summary of what was done in this session and whether the objective was achieved",
+            max_length=MAX_NOTE_LENGTH,
+        ),
+    ],
+) -> str:
+    """Attach a summary note to a task after completing it.
+
+    Call this at the end of your session to record what was accomplished and whether
+    the objective was fully achieved. The note is stored alongside the task and can
+    be retrieved later via get_task or list_tasks to evaluate outcomes.
+
+    The task ID is available in the ORCHESTRATOR_TASK_ID environment variable.
+    """
+    settings = _get_settings()
+    async with OrchestratorDB(settings.db_path) as db:
+        found = await db.add_task_note(task_id, note)
+    if not found:
+        return json.dumps({"error": f"Task {task_id!r} not found"})
+    return json.dumps({"task_id": task_id, "note_saved": True})
 
 
 @mcp.tool()

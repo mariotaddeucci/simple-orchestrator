@@ -73,6 +73,7 @@ class OrchestratorDB(SessionHistoryDB):
                 started_at TEXT,
                 ended_at TEXT,
                 depends_on TEXT,
+                note TEXT,
                 FOREIGN KEY (agent_id) REFERENCES agents(id)
             );
 
@@ -102,6 +103,13 @@ class OrchestratorDB(SessionHistoryDB):
         # Migration: add depends_on column to queue if it doesn't exist yet (existing DBs).
         try:
             await self._conn.execute("ALTER TABLE queue ADD COLUMN depends_on TEXT")
+            await self._conn.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc):
+                raise
+        # Migration: add note column to queue if it doesn't exist yet (existing DBs).
+        try:
+            await self._conn.execute("ALTER TABLE queue ADD COLUMN note TEXT")
             await self._conn.commit()
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc):
@@ -217,7 +225,7 @@ class OrchestratorDB(SessionHistoryDB):
         assert self._conn
         async with self._conn.execute(
             "SELECT id, agent_id, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at, depends_on "
+            "created_at, started_at, ended_at, depends_on, note "
             "FROM queue WHERE status = 'pending' ORDER BY id ASC",
         ) as cursor:
             rows = await cursor.fetchall()
@@ -300,11 +308,21 @@ class OrchestratorDB(SessionHistoryDB):
         )
         await self._conn.commit()
 
+    async def add_task_note(self, item_id: str, note: str) -> bool:
+        """Attach a summary note to a queue item. Returns True if the item exists."""
+        assert self._conn
+        async with self._conn.execute("SELECT 1 FROM queue WHERE id = ?", (item_id,)) as cursor:
+            exists = await cursor.fetchone() is not None
+        if exists:
+            await self._conn.execute("UPDATE queue SET note = ? WHERE id = ?", (note, item_id))
+            await self._conn.commit()
+        return exists
+
     async def get_queue_item(self, item_id: str) -> QueueItem | None:
         assert self._conn
         async with self._conn.execute(
             "SELECT id, agent_id, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at, depends_on FROM queue WHERE id = ?",
+            "created_at, started_at, ended_at, depends_on, note FROM queue WHERE id = ?",
             (item_id,),
         ) as cursor:
             row = await cursor.fetchone()
@@ -328,7 +346,7 @@ class OrchestratorDB(SessionHistoryDB):
         assert self._conn
         _cols = (
             "SELECT id, agent_id, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at, depends_on FROM queue"
+            "created_at, started_at, ended_at, depends_on, note FROM queue"
         )
         if status is not None and agent_id is not None:
             query = _cols + " WHERE status = ? AND agent_id = ? ORDER BY id ASC"
@@ -432,6 +450,7 @@ def _row_to_queue(row: aiosqlite.Row) -> QueueItem:
         started_at=datetime.fromisoformat(row[7]) if row[7] else None,
         ended_at=datetime.fromisoformat(row[8]) if row[8] else None,
         depends_on=json.loads(row[9]) if row[9] else [],
+        note=row[10],
     )
 
 

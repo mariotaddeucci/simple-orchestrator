@@ -36,6 +36,7 @@ MAX_MEMORY_CONTENT_LENGTH: int = 1_000_000
 
 MAX_DESCRIPTION_LENGTH: int = 200
 MAX_WORKDIR_LENGTH: int = 4_096
+MAX_NOTE_LENGTH: int = 10_000
 
 # ── Validator functions ───────────────────────────────────────────────────────
 

@@ -15,3 +15,4 @@ class QueueItem(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     depends_on: list[str] = Field(default_factory=list)
+    note: str | None = None

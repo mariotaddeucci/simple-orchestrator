@@ -272,6 +272,7 @@ class QueueRunner:
             workdir=workdir,
             mcp_servers=merged_mcp,
             skills=merged_skills,
+            env={"ORCHESTRATOR_TASK_ID": item.id},
         )
 
     def _filter_skills_to_tmpdir(
