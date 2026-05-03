@@ -24,7 +24,8 @@ from functools import cache
 from typing import Annotated
 
 from fastmcp import FastMCP
-from pydantic import Field
+from pydantic import BaseModel, Field
+from ulid import ULID
 
 from .db.orchestrator import OrchestratorDB
 from .settings import OrchestratorSettings
@@ -114,20 +115,110 @@ async def enqueue_task(
         str, Field(description="ID of the agent to handle this task (use list_agents to find valid IDs)")
     ],
     prompt: Annotated[str, Field(description="Full task description for the agent")],
+    depends_on: Annotated[
+        list[str] | None,
+        Field(
+            description="Optional list of task IDs that must complete successfully before this task starts. "
+            "The task will be skipped until all listed tasks reach 'completed' status. "
+            "If any dependency fails or is cancelled, this task is automatically failed too."
+        ),
+    ] = None,
 ) -> str:
     """Add a task to the queue for a specific agent. Returns the task ID and initial status."""
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
-        item = await db.enqueue(agent_id, prompt)
+        item = await db.enqueue(agent_id, prompt, depends_on=depends_on)
     return json.dumps(
         {
             "task_id": item.id,
             "agent_id": item.agent_id,
             "agent_nickname": item.agent_nickname,
             "status": item.status,
+            "depends_on": item.depends_on,
             "created_at": item.created_at.isoformat(),
         }
     )
+
+
+class _TaskSpec(BaseModel):
+    alias: str | None = Field(
+        default=None,
+        description=(
+            "Local name for this task — other tasks in the same batch can reference it "
+            "in their depends_on list"
+        ),
+    )
+    agent_id: str = Field(description="ID of the agent to handle this task")
+    prompt: str = Field(description="Full task description for the agent")
+    workdir: str | None = Field(default=None, description="Optional working directory override")
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="Aliases (from this batch) or existing task IDs this task must wait for",
+    )
+
+
+@mcp.tool()
+async def enqueue_tasks(
+    tasks: Annotated[
+        list[_TaskSpec],
+        Field(
+            description=(
+                "Ordered list of tasks to enqueue in a single call. "
+                "Each task may declare an 'alias' and reference other tasks' aliases in 'depends_on', "
+                "allowing the full dependency graph to be expressed without extra round-trips. "
+                'Example: [{"alias": "fetch", "agent_id": "a1", "prompt": "Fetch data"}, '
+                '{"alias": "analyze", "agent_id": "a2", "prompt": "Analyze it", '
+                '"depends_on": ["fetch"]}]'
+            )
+        ),
+    ],
+) -> str:
+    """Enqueue multiple tasks at once, with optional dependencies between them.
+
+    Tasks are processed in the order provided. Each task can reference the alias of another task
+    in the same batch inside its `depends_on` list, so the entire dependency graph can be submitted
+    in a single tool call — no need to enqueue tasks one by one and collect IDs manually.
+
+    Aliases are resolved to real task IDs before insertion. You may also mix aliases with
+    existing task IDs (from previous enqueue_task / enqueue_tasks calls) in `depends_on`.
+    """
+    if not tasks:
+        return json.dumps({"error": "No tasks provided", "enqueued": []})
+
+    # Pre-generate IDs so aliases can be resolved before any DB writes.
+    task_ids = [str(ULID()) for _ in tasks]
+    alias_to_id: dict[str, str] = {}
+    for spec, tid in zip(tasks, task_ids, strict=True):
+        if spec.alias:
+            if spec.alias in alias_to_id:
+                return json.dumps({"error": f"Duplicate alias {spec.alias!r}", "enqueued": []})
+            alias_to_id[spec.alias] = tid
+
+    settings = _get_settings()
+    enqueued = []
+    async with OrchestratorDB(settings.db_path) as db:
+        for spec, tid in zip(tasks, task_ids, strict=True):
+            # Resolve depends_on: replace aliases with real IDs; pass through bare IDs unchanged.
+            resolved_deps = [alias_to_id.get(dep, dep) for dep in spec.depends_on]
+
+            item = await db.enqueue(
+                spec.agent_id,
+                spec.prompt,
+                workdir=spec.workdir,
+                depends_on=resolved_deps or None,
+                item_id=tid,
+            )
+            enqueued.append(
+                {
+                    "alias": spec.alias,
+                    "task_id": item.id,
+                    "agent_id": item.agent_id,
+                    "status": item.status,
+                    "depends_on": item.depends_on,
+                }
+            )
+
+    return json.dumps({"enqueued": enqueued}, indent=2)
 
 
 @mcp.tool()
@@ -153,6 +244,7 @@ async def list_tasks(
                 "agent_nickname": item.agent_nickname,
                 "prompt_preview": prompt_preview,
                 "status": item.status,
+                "depends_on": item.depends_on,
                 "session_id": item.session_id,
                 "created_at": item.created_at.isoformat(),
                 "started_at": item.started_at.isoformat() if item.started_at else None,
@@ -181,6 +273,7 @@ async def get_task(
             "agent_nickname": item.agent_nickname,
             "prompt": item.prompt,
             "status": item.status,
+            "depends_on": item.depends_on,
             "session_id": item.session_id,
             "created_at": item.created_at.isoformat(),
             "started_at": item.started_at.isoformat() if item.started_at else None,

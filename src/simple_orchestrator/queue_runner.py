@@ -86,12 +86,18 @@ class QueueRunner:
         while True:
             await self._semaphore.acquire()
             item = await self._db.dequeue_next()
-            if not item:
+            if item:
+                task = asyncio.create_task(self._dispatch(item))
+                self._dispatch_tasks.add(task)
+                task.add_done_callback(self._dispatch_tasks.discard)
+            else:
                 self._semaphore.release()
-                break
-            task = asyncio.create_task(self._dispatch(item))
-            self._dispatch_tasks.add(task)
-            task.add_done_callback(self._dispatch_tasks.discard)
+                if self._dispatch_tasks:
+                    # Running tasks may complete their dependencies; wait for at least one to
+                    # finish before retrying dequeue so dependent items can be unlocked.
+                    await asyncio.wait(self._dispatch_tasks, return_when=asyncio.FIRST_COMPLETED)
+                else:
+                    break
 
     # ── zombie resume ─────────────────────────────────────────────────────────
 

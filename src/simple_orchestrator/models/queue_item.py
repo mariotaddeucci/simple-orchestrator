@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QueueItem(BaseModel):
@@ -15,3 +15,4 @@ class QueueItem(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     ended_at: datetime | None = None
+    depends_on: list[str] = Field(default_factory=list)

@@ -460,3 +460,62 @@ async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
     await runner.stop()
 
     assert saved_session_id in vendor.run_session_ids
+
+
+# ── depends_on integration tests ─────────────────────────────────────────────
+
+
+async def test_run_until_empty_respects_depends_on(orch_db, settings):
+    """Dependent task only runs after its dependency is completed."""
+    vendor = FakeVendor(orch_db)
+    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+
+    dep = await orch_db.enqueue(agent.id, "first")
+    _item = await orch_db.enqueue(agent.id, "second", depends_on=[dep.id])
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+    await runner.run_until_empty()
+
+    items = await orch_db.list_queue()
+    assert all(i.status == "completed" for i in items), [i.status for i in items]
+    assert vendor.executed_prompts == ["first", "second"]
+
+
+async def test_run_until_empty_fails_dependent_when_dep_fails(orch_db, settings):
+    """Dependent task is auto-failed when its dependency fails."""
+    vendor = FakeVendor(orch_db, fail=True)
+    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+
+    dep = await orch_db.enqueue(agent.id, "first-fails")
+    item = await orch_db.enqueue(agent.id, "second-blocked", depends_on=[dep.id])
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+    await runner.run_until_empty()
+
+    dep_result = await orch_db.get_queue_item(dep.id)
+    assert dep_result is not None
+    assert dep_result.status == "failed"
+
+    item_result = await orch_db.get_queue_item(item.id)
+    assert item_result is not None
+    assert item_result.status == "failed"
+
+
+async def test_run_until_empty_chain_of_three(orch_db, settings):
+    """A → B → C chain runs in order and all complete."""
+    vendor = FakeVendor(orch_db)
+    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+
+    a = await orch_db.enqueue(agent.id, "task-a")
+    b = await orch_db.enqueue(agent.id, "task-b", depends_on=[a.id])
+    c = await orch_db.enqueue(agent.id, "task-c", depends_on=[b.id])
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+    await runner.run_until_empty()
+
+    for task_id in (a.id, b.id, c.id):
+        result = await orch_db.get_queue_item(task_id)
+        assert result is not None
+        assert result.status == "completed", f"{task_id} has status {result.status}"
+
+    assert vendor.executed_prompts == ["task-a", "task-b", "task-c"]
