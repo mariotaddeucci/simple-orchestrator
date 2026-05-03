@@ -20,6 +20,7 @@ from .models import (
 from .polling_runner import PollingRunner
 from .queue_runner import QueueRunner
 from .settings import AgentSettings, OrchestratorSettings, setup_logging
+from .skills import get_skill_path, list_skill_names
 from .tui import run_tui
 from .vendors import BaseVendor, ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
 
@@ -45,6 +46,8 @@ __all__ = [
     "SessionHistoryDB",
     "SessionRecord",
     "SkillConfig",
+    "get_skill_path",
+    "list_skill_names",
     "run_tui",
     "setup_logging",
 ]
