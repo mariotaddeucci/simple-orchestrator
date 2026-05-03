@@ -21,7 +21,7 @@ Or globally (all agents):
 
 import json
 from functools import cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -29,6 +29,16 @@ from ulid import ULID
 
 from .db.orchestrator import OrchestratorDB
 from .settings import OrchestratorSettings
+from .validators import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_MEMORY_CONTENT_LENGTH,
+    MAX_PROMPT_LENGTH,
+    ValidAgentId,
+    ValidAlias,
+    ValidDepRef,
+    ValidULID,
+    ValidWorkdir,
+)
 
 mcp = FastMCP(
     "simple-orchestrator",
@@ -56,7 +66,10 @@ def _prompt_description(prompt: str) -> str:
 
 @mcp.tool()
 async def list_agents(
-    vendor: Annotated[str | None, Field(description="Filter by vendor: claude_code, opencode, github_copilot")] = None,
+    vendor: Annotated[
+        Literal["claude_code", "opencode", "github_copilot"] | None,
+        Field(description="Filter by vendor: claude_code, opencode, github_copilot"),
+    ] = None,
 ) -> str:
     """List all available agents that can process tasks.
 
@@ -112,15 +125,17 @@ async def list_agents(
 @mcp.tool()
 async def enqueue_task(
     agent_id: Annotated[
-        str, Field(description="ID of the agent to handle this task (use list_agents to find valid IDs)")
+        ValidAgentId,
+        Field(description="ID of the agent to handle this task (use list_agents to find valid IDs)"),
     ],
-    prompt: Annotated[str, Field(description="Full task description for the agent")],
+    prompt: Annotated[str, Field(description="Full task description for the agent", max_length=MAX_PROMPT_LENGTH)],
     depends_on: Annotated[
-        list[str] | None,
+        list[ValidULID] | None,
         Field(
             description="Optional list of task IDs that must complete successfully before this task starts. "
             "The task will be skipped until all listed tasks reach 'completed' status. "
-            "If any dependency fails or is cancelled, this task is automatically failed too."
+            "If any dependency fails or is cancelled, this task is automatically failed too.",
+            max_length=100,
         ),
     ] = None,
 ) -> str:
@@ -141,20 +156,32 @@ async def enqueue_task(
 
 
 class _TaskSpec(BaseModel):
-    alias: str | None = Field(
-        default=None,
-        description=(
-            "Local name for this task — other tasks in the same batch can reference it "
-            "in their depends_on list"
+    alias: Annotated[
+        ValidAlias | None,
+        Field(
+            default=None,
+            description=(
+                "Local name for this task — other tasks in the same batch can reference it in their depends_on list"
+            ),
         ),
-    )
-    agent_id: str = Field(description="ID of the agent to handle this task")
-    prompt: str = Field(description="Full task description for the agent")
-    workdir: str | None = Field(default=None, description="Optional working directory override")
-    depends_on: list[str] = Field(
-        default_factory=list,
-        description="Aliases (from this batch) or existing task IDs this task must wait for",
-    )
+    ] = None
+    agent_id: Annotated[ValidAgentId, Field(description="ID of the agent to handle this task")]
+    prompt: Annotated[
+        str,
+        Field(description="Full task description for the agent", max_length=MAX_PROMPT_LENGTH),
+    ]
+    workdir: Annotated[
+        ValidWorkdir,
+        Field(default=None, description="Optional working directory override"),
+    ] = None
+    depends_on: Annotated[
+        list[ValidDepRef],
+        Field(
+            default_factory=list,
+            description="Aliases (from this batch) or existing task IDs this task must wait for",
+            max_length=100,
+        ),
+    ] = Field(default_factory=list)
 
 
 @mcp.tool()
@@ -169,7 +196,9 @@ async def enqueue_tasks(
                 'Example: [{"alias": "fetch", "agent_id": "a1", "prompt": "Fetch data"}, '
                 '{"alias": "analyze", "agent_id": "a2", "prompt": "Analyze it", '
                 '"depends_on": ["fetch"]}]'
-            )
+            ),
+            min_length=1,
+            max_length=100,
         ),
     ],
 ) -> str:
@@ -182,9 +211,6 @@ async def enqueue_tasks(
     Aliases are resolved to real task IDs before insertion. You may also mix aliases with
     existing task IDs (from previous enqueue_task / enqueue_tasks calls) in `depends_on`.
     """
-    if not tasks:
-        return json.dumps({"error": "No tasks provided", "enqueued": []})
-
     # Pre-generate IDs so aliases can be resolved before any DB writes.
     task_ids = [str(ULID()) for _ in tasks]
     alias_to_id: dict[str, str] = {}
@@ -224,10 +250,10 @@ async def enqueue_tasks(
 @mcp.tool()
 async def list_tasks(
     status: Annotated[
-        str | None,
+        Literal["pending", "running", "completed", "failed", "cancelled"] | None,
         Field(description="Filter by status: pending, running, completed, failed, cancelled"),
     ] = None,
-    agent_id: Annotated[str | None, Field(description="Filter by agent ID")] = None,
+    agent_id: Annotated[ValidAgentId | None, Field(description="Filter by agent ID")] = None,
 ) -> str:
     """List tasks in the queue. Returns task IDs, statuses, linked session IDs, and timestamps."""
     settings = _get_settings()
@@ -256,7 +282,7 @@ async def list_tasks(
 
 @mcp.tool()
 async def get_task(
-    task_id: Annotated[str, Field(description="Task ID returned by enqueue_task or list_tasks")],
+    task_id: Annotated[ValidULID, Field(description="Task ID returned by enqueue_task or list_tasks")],
 ) -> str:
     """Get full details of a specific task including its complete prompt and linked session ID."""
     settings = _get_settings()
@@ -284,7 +310,7 @@ async def get_task(
 
 @mcp.tool()
 async def cancel_task(
-    task_id: Annotated[str, Field(description="Task ID to cancel (only works on pending tasks)")],
+    task_id: Annotated[ValidULID, Field(description="Task ID to cancel (only works on pending tasks)")],
 ) -> str:
     """Cancel a pending task. Has no effect on running, completed, or already-cancelled tasks."""
     settings = _get_settings()
@@ -307,7 +333,7 @@ async def cancel_task(
 
 @mcp.tool()
 async def get_session(
-    session_id: Annotated[str, Field(description="Session ID from a completed task's session_id field")],
+    session_id: Annotated[ValidULID, Field(description="Session ID from a completed task's session_id field")],
 ) -> str:
     """Get details of the session created for a task. Use the session_id from get_task or list_tasks."""
     settings = _get_settings()
@@ -333,9 +359,21 @@ async def get_session(
 
 @mcp.tool()
 async def save_memory(
-    agent_id: Annotated[str, Field(description="Agent ID that owns this memory")],
-    description: Annotated[str, Field(description="One-line summary shown in list_memories (max 200 chars)")],
-    content: Annotated[str, Field(description="Full memory content — context, state, or notes to resume from")],
+    agent_id: Annotated[ValidAgentId, Field(description="Agent ID that owns this memory")],
+    description: Annotated[
+        str,
+        Field(
+            description="One-line summary shown in list_memories (max 200 chars)",
+            max_length=MAX_DESCRIPTION_LENGTH,
+        ),
+    ],
+    content: Annotated[
+        str,
+        Field(
+            description="Full memory content — context, state, or notes to resume from",
+            max_length=MAX_MEMORY_CONTENT_LENGTH,
+        ),
+    ],
 ) -> str:
     """Save a new memory for an agent.
 
@@ -343,7 +381,7 @@ async def save_memory(
     """
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
-        record = await db.save_memory(agent_id, description[:200], content)
+        record = await db.save_memory(agent_id, description, content)
     return json.dumps(
         {
             "memory_id": record.id,
@@ -356,7 +394,7 @@ async def save_memory(
 
 @mcp.tool()
 async def list_memories(
-    agent_id: Annotated[str | None, Field(description="Filter by agent ID (omit to list all agents)")] = None,
+    agent_id: Annotated[ValidAgentId | None, Field(description="Filter by agent ID (omit to list all agents)")] = None,
 ) -> str:
     """List saved memories. Returns memory_id, agent_id, description, and updated_at — no full content."""
     settings = _get_settings()
@@ -378,7 +416,7 @@ async def list_memories(
 
 @mcp.tool()
 async def get_memory(
-    memory_id: Annotated[str, Field(description="Memory ID returned by save_memory or list_memories")],
+    memory_id: Annotated[ValidULID, Field(description="Memory ID returned by save_memory or list_memories")],
 ) -> str:
     """Get the full content of a specific memory entry."""
     settings = _get_settings()
@@ -399,7 +437,7 @@ async def get_memory(
 
 @mcp.tool()
 async def delete_memory(
-    memory_id: Annotated[str, Field(description="Memory ID to delete")],
+    memory_id: Annotated[ValidULID, Field(description="Memory ID to delete")],
 ) -> str:
     """Delete a specific memory entry by its ID. No-op if not found."""
     settings = _get_settings()
