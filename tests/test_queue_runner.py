@@ -55,7 +55,7 @@ class FakeVendor(BaseVendor):
 
 @pytest.fixture
 async def orch_db(tmp_path):
-    db = OrchestratorDB(str(tmp_path / "orch.db"))
+    db = OrchestratorDB(tmp_path / "orch.db")
     await db.connect()
     yield db
     await db.close()

@@ -157,7 +157,7 @@ class AgentSettings(BaseModel):
     def resolve_prompt(self) -> str:
         """Return the prompt text, reading from file if needed."""
         if self.prompt_file:
-            return Path(self.prompt_file).read_text(encoding="utf-8").strip()
+            return self.prompt_file.read_text(encoding="utf-8").strip()
         return (self.prompt or "").strip()
 
     @property
@@ -217,7 +217,7 @@ def setup_logging(settings: OrchestratorSettings) -> None:
     Subsequent calls are idempotent (handlers not added twice).
     """
     level = logging.getLevelName(settings.log_level)
-    logs_dir = Path(settings.logs_dir)
+    logs_dir = settings.logs_dir
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     fmt = logging.Formatter(
@@ -228,8 +228,8 @@ def setup_logging(settings: OrchestratorSettings) -> None:
     root = logging.getLogger()
     # Skip if handlers already configured at this level
     existing_files = {h.baseFilename for h in root.handlers if isinstance(h, TimedRotatingFileHandler)}
-    log_file = str(logs_dir / "orchestrator.log")
-    if log_file not in existing_files:
+    log_file = logs_dir / "orchestrator.log"
+    if str(log_file.resolve()) not in existing_files:
         fh = TimedRotatingFileHandler(
             log_file,
             when="midnight",

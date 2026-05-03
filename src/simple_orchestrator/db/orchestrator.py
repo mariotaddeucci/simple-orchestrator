@@ -34,7 +34,7 @@ def _resolve_workdir(workdir: str | None) -> str:
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
-                cwd=str(path),
+                cwd=path,
                 capture_output=True,
                 text=True,
                 check=True,
