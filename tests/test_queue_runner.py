@@ -13,7 +13,7 @@ from simple_orchestrator.db.orchestrator import OrchestratorDB
 from simple_orchestrator.models.mcp import McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.queue_item import QueueItem
-from simple_orchestrator.models.session import SessionConfig
+from simple_orchestrator.models.session import SessionConfig, SessionRecord
 from simple_orchestrator.queue_runner import QueueRunner, _AgentInfo
 from simple_orchestrator.settings import OrchestratorSettings
 from simple_orchestrator.vendors.base import BaseVendor
@@ -333,3 +333,129 @@ async def test_global_timeout_used_when_agent_has_none(orch_db):
     result = await orch_db.get_queue_item(item.id)
     assert result is not None
     assert result.status == "failed"
+
+
+# ── zombie resume tests ───────────────────────────────────────────────────────
+
+
+class ResumingVendor(FakeVendor):
+    """Records which session_ids were passed to _run_session, enabling resume detection."""
+
+    def __init__(self, db: SessionHistoryDB) -> None:
+        super().__init__(db)
+        self.run_session_ids: list[str] = []
+
+    async def _run_session(self, session_id: str, config: SessionConfig) -> None:
+        self.run_session_ids.append(session_id)
+        self.executed_prompts.append(config.prompt)
+        await asyncio.sleep(0)
+
+
+async def test_resume_zombie_sessions_resumes_with_existing_session_id(orch_db, settings):
+    """Items left in 'running' state are resumed using the saved session_id."""
+    vendor = ResumingVendor(orch_db)
+    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+
+    # Simulate a zombie: enqueue, dequeue (→running), link a session_id as if a
+    # previous run had started the session but then crashed mid-execution.
+    item = await orch_db.enqueue(agent.id, "zombie task")
+    await orch_db.dequeue_next()  # transitions item to 'running'
+    saved_session_id = str(ULID())
+    await orch_db.update_queue_item(item.id, status="running", session_id=saved_session_id)
+
+    # Also create a session record so vendor.resume can update it back to 'running'
+    zombie_record = SessionRecord(
+        id=saved_session_id,
+        vendor="fake",
+        prompt="zombie task",
+        workdir="/tmp/work",
+        started_at=datetime.now(UTC),
+        status="running",
+    )
+    await orch_db.save(zombie_record)
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+    await runner.resume_zombie_sessions()
+
+    # Give background callbacks a moment to fire
+    await asyncio.sleep(0.1)
+
+    # The vendor must have been called with the same session_id (resume, not fresh run)
+    assert saved_session_id in vendor.run_session_ids
+
+    # The queue item must have been marked completed
+    result = await orch_db.get_queue_item(item.id)
+    assert result is not None
+    assert result.status == "completed"
+
+
+async def test_resume_zombie_sessions_runs_fresh_when_no_session_id(orch_db, settings):
+    """Zombie items with no saved session_id get a brand-new session."""
+    vendor = ResumingVendor(orch_db)
+    agent = await orch_db.register_agent(name="B", prompt="p", vendor="fake")
+
+    item = await orch_db.enqueue(agent.id, "no-session zombie")
+    await orch_db.dequeue_next()
+    # Leave session_id as NULL — as if the crash happened before vendor.run() returned
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+    await runner.resume_zombie_sessions()
+    await asyncio.sleep(0.1)
+
+    assert len(vendor.executed_prompts) == 1
+
+    result = await orch_db.get_queue_item(item.id)
+    assert result is not None
+    assert result.status == "completed"
+
+
+async def test_resume_zombie_sessions_marks_failed_when_agent_missing(orch_db, settings):
+    """Zombie items whose agent is gone are marked failed, not re-run."""
+    vendor = ResumingVendor(orch_db)
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+
+    ghost_agent_id = str(ULID())
+    # Directly insert a zombie queue item with an unknown agent
+    item_id = str(ULID())
+    await orch_db._conn.execute(
+        "INSERT INTO queue (id, agent_id, prompt, status, created_at) VALUES (?, ?, ?, 'running', ?)",
+        (item_id, ghost_agent_id, "ghost task", datetime.now(UTC).isoformat()),
+    )
+    await orch_db._conn.commit()
+
+    await runner.resume_zombie_sessions()
+    await asyncio.sleep(0.1)
+
+    result = await orch_db.get_queue_item(item_id)
+    assert result is not None
+    assert result.status == "failed"
+    assert len(vendor.executed_prompts) == 0
+
+
+async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
+    """start() calls resume_zombie_sessions before starting the polling loop."""
+    vendor = ResumingVendor(orch_db)
+    agent = await orch_db.register_agent(name="C", prompt="p", vendor="fake")
+
+    item = await orch_db.enqueue(agent.id, "startup zombie")
+    await orch_db.dequeue_next()
+
+    saved_session_id = str(ULID())
+    await orch_db.update_queue_item(item.id, status="running", session_id=saved_session_id)
+    await orch_db.save(
+        SessionRecord(
+            id=saved_session_id,
+            vendor="fake",
+            prompt="startup zombie",
+            workdir="/tmp/work",
+            started_at=datetime.now(UTC),
+            status="running",
+        )
+    )
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings, poll_interval=0.05)
+    await runner.start()
+    await asyncio.sleep(0.2)
+    await runner.stop()
+
+    assert saved_session_id in vendor.run_session_ids
