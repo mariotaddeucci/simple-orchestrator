@@ -311,12 +311,9 @@ class OrchestratorDB(SessionHistoryDB):
     async def add_task_note(self, item_id: str, note: str) -> bool:
         """Attach a summary note to a queue item. Returns True if the item exists."""
         assert self._conn
-        async with self._conn.execute("SELECT 1 FROM queue WHERE id = ?", (item_id,)) as cursor:
-            exists = await cursor.fetchone() is not None
-        if exists:
-            await self._conn.execute("UPDATE queue SET note = ? WHERE id = ?", (note, item_id))
-            await self._conn.commit()
-        return exists
+        cursor = await self._conn.execute("UPDATE queue SET note = ? WHERE id = ?", (note, item_id))
+        await self._conn.commit()
+        return cursor.rowcount > 0
 
     async def get_queue_item(self, item_id: str) -> QueueItem | None:
         assert self._conn
