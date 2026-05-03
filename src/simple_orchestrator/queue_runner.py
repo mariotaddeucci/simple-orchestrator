@@ -315,10 +315,18 @@ class QueueRunner:
 
         tmp_dir = Path(tempfile.mkdtemp(prefix="skills-"))
         result: list[SkillConfig] = []
-        for src in matches:
-            dst = tmp_dir / src.name
-            shutil.copy2(src, dst)
-            result.append(SkillConfig(name=src.stem, path=str(dst)))
+        try:
+            for src in matches:
+                dst = tmp_dir / src.name
+                try:
+                    shutil.copy2(src, dst)
+                except OSError:
+                    logger.warning("skill_globs: failed to copy skill file %s for agent %s", src.name, info.label)
+                    raise
+                result.append(SkillConfig(name=src.stem, path=str(dst)))
+        except Exception:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
         logger.debug("skill_globs filtered %d skill(s) into %s", len(result), tmp_dir)
         return result, str(tmp_dir)
 
