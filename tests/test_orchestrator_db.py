@@ -267,3 +267,108 @@ async def test_sessions_table_accessible_from_orchestrator_db(db):
     fetched = await db.get(record.id)
     assert fetched is not None
     assert fetched.vendor == "test"
+
+
+# ── depends_on ────────────────────────────────────────────────────────────────
+
+
+async def test_enqueue_with_depends_on(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    dep = await db.enqueue(agent.id, "dependency task")
+    item = await db.enqueue(agent.id, "dependent task", depends_on=[dep.id])
+
+    assert item.depends_on == [dep.id]
+    fetched = await db.get_queue_item(item.id)
+    assert fetched is not None
+    assert fetched.depends_on == [dep.id]
+
+
+async def test_enqueue_without_depends_on_defaults_to_empty(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    item = await db.enqueue(agent.id, "independent task")
+    assert item.depends_on == []
+
+    fetched = await db.get_queue_item(item.id)
+    assert fetched is not None
+    assert fetched.depends_on == []
+
+
+async def test_dequeue_skips_item_with_pending_dep(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    dep = await db.enqueue(agent.id, "dep task")
+    await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+
+    # dep is still pending, so blocked task should not be dequeued
+    dequeued = await db.dequeue_next()
+    assert dequeued is not None
+    assert dequeued.id == dep.id  # only the dep is ready
+
+    # Now nothing else is dequeue-able (blocked task dep is running, not completed)
+    assert await db.dequeue_next() is None
+
+
+async def test_dequeue_claims_item_when_dep_completed(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    dep = await db.enqueue(agent.id, "dep task")
+    item = await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+
+    # Complete the dependency
+    await db.update_queue_item(dep.id, status="completed")
+
+    dequeued = await db.dequeue_next()
+    assert dequeued is not None
+    assert dequeued.id == item.id
+
+
+async def test_dequeue_auto_fails_item_when_dep_failed(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    dep = await db.enqueue(agent.id, "dep task")
+    item = await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+
+    await db.update_queue_item(dep.id, status="failed")
+
+    # Trying to dequeue should auto-fail the blocked item and return None
+    result = await db.dequeue_next()
+    assert result is None
+
+    failed = await db.get_queue_item(item.id)
+    assert failed is not None
+    assert failed.status == "failed"
+
+
+async def test_dequeue_auto_fails_item_when_dep_cancelled(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    dep = await db.enqueue(agent.id, "dep task")
+    item = await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+
+    await db.cancel_queue_item(dep.id)
+
+    result = await db.dequeue_next()
+    assert result is None
+
+    failed = await db.get_queue_item(item.id)
+    assert failed is not None
+    assert failed.status == "failed"
+
+
+async def test_dequeue_auto_fails_item_when_dep_missing(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    item = await db.enqueue(agent.id, "blocked task", depends_on=["nonexistent-id"])
+
+    result = await db.dequeue_next()
+    assert result is None
+
+    failed = await db.get_queue_item(item.id)
+    assert failed is not None
+    assert failed.status == "failed"
+
+
+async def test_list_queue_includes_depends_on(db):
+    agent = await db.register_agent(name="W", prompt="p", vendor="v")
+    dep = await db.enqueue(agent.id, "dep")
+    item = await db.enqueue(agent.id, "dependent", depends_on=[dep.id])
+
+    items = await db.list_queue()
+    by_id = {i.id: i for i in items}
+    assert by_id[dep.id].depends_on == []
+    assert by_id[item.id].depends_on == [dep.id]

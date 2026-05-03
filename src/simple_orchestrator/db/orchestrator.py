@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import UTC, datetime
 
@@ -41,6 +42,7 @@ class OrchestratorDB(SessionHistoryDB):
                 created_at TEXT NOT NULL,
                 started_at TEXT,
                 ended_at TEXT,
+                depends_on TEXT,
                 FOREIGN KEY (agent_id) REFERENCES agents(id)
             );
 
@@ -63,6 +65,13 @@ class OrchestratorDB(SessionHistoryDB):
         # Migration: add workdir column to queue if it doesn't exist yet (existing DBs).
         try:
             await self._conn.execute("ALTER TABLE queue ADD COLUMN workdir TEXT")
+            await self._conn.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc):
+                raise
+        # Migration: add depends_on column to queue if it doesn't exist yet (existing DBs).
+        try:
+            await self._conn.execute("ALTER TABLE queue ADD COLUMN depends_on TEXT")
             await self._conn.commit()
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc):
@@ -135,7 +144,13 @@ class OrchestratorDB(SessionHistoryDB):
 
     # ── queue ─────────────────────────────────────────────────────────────────
 
-    async def enqueue(self, agent_id: str, prompt: str, workdir: str | None = None) -> QueueItem:
+    async def enqueue(
+        self,
+        agent_id: str,
+        prompt: str,
+        workdir: str | None = None,
+        depends_on: list[str] | None = None,
+    ) -> QueueItem:
         assert self._conn
         agent = await self.get_agent(agent_id)
         item = QueueItem(
@@ -146,10 +161,11 @@ class OrchestratorDB(SessionHistoryDB):
             workdir=workdir,
             status="pending",
             created_at=datetime.now(UTC),
+            depends_on=depends_on or [],
         )
         await self._conn.execute(
-            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, workdir, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, workdir, status, created_at, depends_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 item.id,
                 item.agent_id,
@@ -158,29 +174,72 @@ class OrchestratorDB(SessionHistoryDB):
                 item.workdir,
                 item.status,
                 item.created_at.isoformat(),
+                json.dumps(item.depends_on) if item.depends_on else None,
             ),
         )
         await self._conn.commit()
         return item
 
     async def dequeue_next(self) -> QueueItem | None:
-        """Atomically claim the next pending item (FIFO by ULID)."""
+        """Claim the next pending item whose dependencies are all completed (FIFO by ULID).
+
+        Items with unmet dependencies are skipped.
+        Items whose dependencies have failed, been cancelled, or killed are automatically failed.
+        """
         assert self._conn
         async with self._conn.execute(
             "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at "
-            "FROM queue WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
+            "created_at, started_at, ended_at, depends_on "
+            "FROM queue WHERE status = 'pending' ORDER BY id ASC"
         ) as cursor:
-            row = await cursor.fetchone()
-        if not row:
-            return None
-        item = _row_to_queue(row)
-        await self._conn.execute(
-            "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
-            (datetime.now(UTC).isoformat(), item.id),
-        )
-        await self._conn.commit()
-        return item
+            rows = await cursor.fetchall()
+
+        now = datetime.now(UTC).isoformat()
+        for row in rows:
+            item = _row_to_queue(row)
+            if not item.depends_on:
+                # No dependencies — claim immediately.
+                await self._conn.execute(
+                    "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
+                    (now, item.id),
+                )
+                await self._conn.commit()
+                return item
+
+            # Fetch statuses of all dependency tasks.
+            placeholders = ",".join("?" * len(item.depends_on))
+            async with self._conn.execute(
+                "SELECT id, status FROM queue WHERE id IN (" + placeholders + ")",  # noqa: S608
+                item.depends_on,
+            ) as dep_cursor:
+                dep_rows = await dep_cursor.fetchall()
+
+            dep_statuses = {r[0]: r[1] for r in dep_rows}
+
+            # Any dependency that failed / was cancelled / was killed causes this item to fail too.
+            terminal_failed = {did for did, st in dep_statuses.items() if st in ("failed", "cancelled", "killed")}
+            # A dependency that doesn't exist at all is also treated as failed.
+            missing = set(item.depends_on) - set(dep_statuses)
+            if terminal_failed or missing:
+                await self._conn.execute(
+                    "UPDATE queue SET status = 'failed', ended_at = ? WHERE id = ?",
+                    (now, item.id),
+                )
+                await self._conn.commit()
+                continue
+
+            # All dependencies must be 'completed' before we can start.
+            if all(dep_statuses.get(did) == "completed" for did in item.depends_on):
+                await self._conn.execute(
+                    "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
+                    (now, item.id),
+                )
+                await self._conn.commit()
+                return item
+
+            # Some dependencies are still pending or running — skip for now.
+
+        return None
 
     async def update_queue_item(
         self,
@@ -217,7 +276,7 @@ class OrchestratorDB(SessionHistoryDB):
         assert self._conn
         async with self._conn.execute(
             "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at FROM queue WHERE id = ?",
+            "created_at, started_at, ended_at, depends_on FROM queue WHERE id = ?",
             (item_id,),
         ) as cursor:
             row = await cursor.fetchone()
@@ -241,7 +300,7 @@ class OrchestratorDB(SessionHistoryDB):
         assert self._conn
         _cols = (
             "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at FROM queue"
+            "created_at, started_at, ended_at, depends_on FROM queue"
         )
         if status is not None and agent_id is not None:
             query = _cols + " WHERE status = ? AND agent_id = ? ORDER BY id ASC"
@@ -345,6 +404,7 @@ def _row_to_queue(row: aiosqlite.Row) -> QueueItem:
         created_at=datetime.fromisoformat(row[7]),
         started_at=datetime.fromisoformat(row[8]) if row[8] else None,
         ended_at=datetime.fromisoformat(row[9]) if row[9] else None,
+        depends_on=json.loads(row[10]) if row[10] else [],
     )
 
 
