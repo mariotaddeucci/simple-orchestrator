@@ -65,7 +65,6 @@ class OrchestratorDB(SessionHistoryDB):
             CREATE TABLE IF NOT EXISTS queue (
                 id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,
-                agent_nickname TEXT,
                 prompt TEXT NOT NULL,
                 workdir TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
@@ -184,11 +183,9 @@ class OrchestratorDB(SessionHistoryDB):
         item_id: str | None = None,
     ) -> QueueItem:
         assert self._conn
-        agent = await self.get_agent(agent_id)
         item = QueueItem(
             id=item_id or _new_ulid(),
             agent_id=agent_id,
-            agent_nickname=agent.nickname if agent else None,
             prompt=prompt,
             workdir=_resolve_workdir(workdir),
             status="pending",
@@ -196,12 +193,11 @@ class OrchestratorDB(SessionHistoryDB):
             depends_on=depends_on or [],
         )
         await self._conn.execute(
-            "INSERT INTO queue (id, agent_id, agent_nickname, prompt, workdir, status, created_at, depends_on) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queue (id, agent_id, prompt, workdir, status, created_at, depends_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 item.id,
                 item.agent_id,
-                item.agent_nickname,
                 item.prompt,
                 item.workdir,
                 item.status,
@@ -220,7 +216,7 @@ class OrchestratorDB(SessionHistoryDB):
         """
         assert self._conn
         async with self._conn.execute(
-            "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
+            "SELECT id, agent_id, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at, depends_on "
             "FROM queue WHERE status = 'pending' ORDER BY id ASC",
         ) as cursor:
@@ -307,7 +303,7 @@ class OrchestratorDB(SessionHistoryDB):
     async def get_queue_item(self, item_id: str) -> QueueItem | None:
         assert self._conn
         async with self._conn.execute(
-            "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
+            "SELECT id, agent_id, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at, depends_on FROM queue WHERE id = ?",
             (item_id,),
         ) as cursor:
@@ -331,7 +327,7 @@ class OrchestratorDB(SessionHistoryDB):
     ) -> list[QueueItem]:
         assert self._conn
         _cols = (
-            "SELECT id, agent_id, agent_nickname, prompt, workdir, status, session_id, "
+            "SELECT id, agent_id, prompt, workdir, status, session_id, "
             "created_at, started_at, ended_at, depends_on FROM queue"
         )
         if status is not None and agent_id is not None:
@@ -428,15 +424,14 @@ def _row_to_queue(row: aiosqlite.Row) -> QueueItem:
     return QueueItem(
         id=row[0],
         agent_id=row[1],
-        agent_nickname=row[2],
-        prompt=row[3],
-        workdir=row[4],
-        status=row[5],
-        session_id=row[6],
-        created_at=datetime.fromisoformat(row[7]),
-        started_at=datetime.fromisoformat(row[8]) if row[8] else None,
-        ended_at=datetime.fromisoformat(row[9]) if row[9] else None,
-        depends_on=json.loads(row[10]) if row[10] else [],
+        prompt=row[2],
+        workdir=row[3],
+        status=row[4],
+        session_id=row[5],
+        created_at=datetime.fromisoformat(row[6]),
+        started_at=datetime.fromisoformat(row[7]) if row[7] else None,
+        ended_at=datetime.fromisoformat(row[8]) if row[8] else None,
+        depends_on=json.loads(row[9]) if row[9] else [],
     )
 
 

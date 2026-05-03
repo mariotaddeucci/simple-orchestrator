@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 class QueueItem(BaseModel):
     id: str
     agent_id: str
-    agent_nickname: str | None = None
     prompt: str
     workdir: str | None = None
     status: Literal["pending", "running", "completed", "failed", "cancelled"]

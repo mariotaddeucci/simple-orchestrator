@@ -64,6 +64,15 @@ def _prompt_description(prompt: str) -> str:
     return ""
 
 
+async def _build_agent_nickname_map(db: OrchestratorDB) -> dict[str, str | None]:
+    """Return a mapping of agent_id -> nickname from both config and DB agents."""
+    settings = _get_settings()
+    result: dict[str, str | None] = {aid: a.nickname for aid, a in settings.agents.items()}
+    for agent in await db.list_agents():
+        result[agent.id] = agent.nickname
+    return result
+
+
 @mcp.tool()
 async def list_agents(
     vendor: Annotated[
@@ -143,11 +152,12 @@ async def enqueue_task(
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         item = await db.enqueue(agent_id, prompt, depends_on=depends_on)
+        agent_nickname = (await _build_agent_nickname_map(db)).get(agent_id)
     return json.dumps(
         {
             "task_id": item.id,
             "agent_id": item.agent_id,
-            "agent_nickname": item.agent_nickname,
+            "agent_nickname": agent_nickname,
             "status": item.status,
             "depends_on": item.depends_on,
             "created_at": item.created_at.isoformat(),
@@ -259,6 +269,7 @@ async def list_tasks(
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         items = await db.list_queue(status=status, agent_id=agent_id)
+        agent_nicknames = await _build_agent_nickname_map(db)
 
     results = []
     for item in items:
@@ -267,7 +278,7 @@ async def list_tasks(
             {
                 "task_id": item.id,
                 "agent_id": item.agent_id,
-                "agent_nickname": item.agent_nickname,
+                "agent_nickname": agent_nicknames.get(item.agent_id),
                 "prompt_preview": prompt_preview,
                 "status": item.status,
                 "depends_on": item.depends_on,
@@ -288,15 +299,15 @@ async def get_task(
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         item = await db.get_queue_item(task_id)
-
-    if not item:
-        return json.dumps({"error": f"Task {task_id!r} not found"})
+        if not item:
+            return json.dumps({"error": f"Task {task_id!r} not found"})
+        agent_nickname = (await _build_agent_nickname_map(db)).get(item.agent_id)
 
     return json.dumps(
         {
             "task_id": item.id,
             "agent_id": item.agent_id,
-            "agent_nickname": item.agent_nickname,
+            "agent_nickname": agent_nickname,
             "prompt": item.prompt,
             "status": item.status,
             "depends_on": item.depends_on,
