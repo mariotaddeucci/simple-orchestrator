@@ -32,7 +32,7 @@ def get_skill_path(name: str) -> Path:
     Parameters
     ----------
     name:
-        Skill name without the ``.md`` extension, e.g. ``"queue-tasks"``.
+        Skill name, e.g. ``"queue-tasks"``.
 
     Raises
     ------
@@ -45,7 +45,7 @@ def get_skill_path(name: str) -> Path:
         known = ", ".join(f'"{n}"' for n in _SKILL_NAMES)
         raise ValueError(f"Unknown built-in skill {name!r}. Known skills: {known}.")
 
-    path = _SKILLS_DIR / f"{name}.md"
+    path = _SKILLS_DIR / name / "SKILL.md"
     if not path.exists():
         raise FileNotFoundError(f"Built-in skill file not found: {path}")
     return path
