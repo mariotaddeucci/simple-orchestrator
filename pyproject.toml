@@ -65,6 +65,15 @@ select = [
     "COM", # flake8-commas
     "DTZ", # flake8-datetimez
     "FBT", # flake8-boolean-trap
+    "ASYNC", # flake8-async
+    "C4",  # flake8-comprehensions
+    "LOG", # flake8-logging
+    "T20", # flake8-print
+    "PT",  # flake8-pytest-style
+    "RSE", # flake8-raise
+    "PERF", # perflint
+    "FURB", # refurb
+    "TRY", # tryceratops
 ]
 ignore = [
     "S101",   # assert statements (used in tests)
@@ -72,10 +81,11 @@ ignore = [
     "PLR2004", # magic value comparison
     "TD002",  # missing author in TODO
     "TD003",  # missing issue link in TODO
+    "TRY003", # long messages outside exception class (acceptable in validators)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S", "PLR", "FBT", "DTZ"]
+"tests/**/*.py" = ["S", "PLR", "FBT", "DTZ", "ASYNC240"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 7
