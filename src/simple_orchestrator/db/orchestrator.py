@@ -1,4 +1,6 @@
+import contextlib
 import json
+import re
 import sqlite3
 import subprocess
 import tempfile
@@ -31,7 +33,7 @@ def _resolve_workdir(workdir: str | None) -> str:
 
     path = Path(workdir)
     if path.exists() and path.is_dir():
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError):
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
                 cwd=path,
@@ -40,8 +42,6 @@ def _resolve_workdir(workdir: str | None) -> str:
                 check=True,
             )
             return result.stdout.strip()
-        except subprocess.CalledProcessError:
-            pass
 
     return workdir
 
@@ -93,23 +93,20 @@ class OrchestratorDB(SessionHistoryDB):
             );
         """)
         await self._conn.commit()
-        # Migration: add workdir column to queue if it doesn't exist yet (existing DBs).
+        # Migrations: add columns that may be missing from older DBs.
+        await self._add_column_if_missing("queue", "workdir", "TEXT")
+        await self._add_column_if_missing("queue", "depends_on", "TEXT")
+        await self._add_column_if_missing("queue", "note", "TEXT")
+
+    async def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
+        assert self._conn
+        _ident = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+        _valid_types = {"TEXT", "INTEGER", "REAL", "BLOB", "NULL"}
+        if not (_ident.match(table) and _ident.match(column) and col_type.upper() in _valid_types):
+            msg = f"Invalid SQL identifier in migration: table={table!r}, column={column!r}, col_type={col_type!r}"
+            raise ValueError(msg)
         try:
-            await self._conn.execute("ALTER TABLE queue ADD COLUMN workdir TEXT")
-            await self._conn.commit()
-        except sqlite3.OperationalError as exc:
-            if "duplicate column name" not in str(exc):
-                raise
-        # Migration: add depends_on column to queue if it doesn't exist yet (existing DBs).
-        try:
-            await self._conn.execute("ALTER TABLE queue ADD COLUMN depends_on TEXT")
-            await self._conn.commit()
-        except sqlite3.OperationalError as exc:
-            if "duplicate column name" not in str(exc):
-                raise
-        # Migration: add note column to queue if it doesn't exist yet (existing DBs).
-        try:
-            await self._conn.execute("ALTER TABLE queue ADD COLUMN note TEXT")
+            await self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
             await self._conn.commit()
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc):
