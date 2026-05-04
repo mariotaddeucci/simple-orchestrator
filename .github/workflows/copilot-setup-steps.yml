@@ -1,0 +1,22 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # Job name must be exactly `copilot-setup-steps` to be picked up by Copilot cloud agent.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Install prek hooks
+        run: uv run prek install
