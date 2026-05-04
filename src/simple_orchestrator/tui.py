@@ -1,10 +1,12 @@
 """
 Terminal User Interface for monitoring the Simple Orchestrator queue.
 
-Displays three panels (auto-refreshed every 2 s):
+Displays three columns (auto-refreshed every 2 s):
   • Pending   — items waiting to run
   • Running   — items currently being executed
   • Finished  — the last N completed/failed/killed/cancelled items
+
+A log panel at the bottom shows recent entries from the orchestrator log file.
 
 Launch via:
     simple-orchestrator tui
@@ -17,13 +19,16 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widgets import DataTable, Footer, Header, Label
+from textual.widgets import DataTable, Footer, Header, Label, RichLog
 
 from .db.orchestrator import OrchestratorDB
 from .settings import OrchestratorSettings
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from textual.binding import BindingType
     from textual.widgets._data_table import ColumnKey
 
@@ -31,6 +36,7 @@ if TYPE_CHECKING:
 
 _REFRESH_INTERVAL = 2.0  # seconds
 _FINISHED_LIMIT = 20  # how many recent finished items to display
+_LOG_DISPLAY_LINES = 100  # max lines shown in the log panel
 
 _STATUS_STYLE: dict[str, str] = {
     "pending": "yellow",
@@ -40,6 +46,49 @@ _STATUS_STYLE: dict[str, str] = {
     "killed": "red",
     "cancelled": "dim",
 }
+
+_LOG_LEVEL_STYLE: dict[str, str] = {
+    "DEBUG": "dim",
+    "INFO": "white",
+    "WARNING": "yellow",
+    "ERROR": "bold red",
+    "CRITICAL": "bold red on dark_red",
+}
+
+
+def _tail_lines(path: Path, n: int) -> list[str]:
+    """Return the last *n* lines of *path*, or [] if the file doesn't exist.
+
+    Reads the file in reverse chunks to avoid loading the entire file into
+    memory when only a small tail is needed.
+    """
+    if not path.exists():
+        return []
+    chunk_size = 8192
+    lines: list[str] = []
+    with path.open("rb") as fh:
+        fh.seek(0, 2)
+        remaining = fh.tell()
+        buf = b""
+        while remaining > 0 and len(lines) <= n:
+            read_size = min(chunk_size, remaining)
+            remaining -= read_size
+            fh.seek(remaining)
+            buf = fh.read(read_size) + buf
+            lines = buf.decode("utf-8", errors="replace").splitlines(keepends=True)
+    return lines[-n:]
+
+
+def _parse_log_line(line: str) -> tuple[str, str, str, str]:
+    """Parse a log line into (timestamp, level, name, message).
+
+    Expected format: ``YYYY-MM-DDTHH:MM:SS LEVEL    name   message``
+    Returns raw strings; falls back to ("", "INFO", "", line) on parse failure.
+    """
+    parts = line.rstrip("\n").split(None, 3)
+    if len(parts) == 4:
+        return parts[0], parts[1].strip(), parts[2].strip(), parts[3]
+    return "", "INFO", "", line.rstrip("\n")
 
 
 def _fmt_dt(dt: datetime | None) -> str:
@@ -159,6 +208,22 @@ class OrchestratorTUI(App[None]):
         layout: vertical;
     }
 
+    /* ── Three-column queue area ────────────────────────────── */
+    #columns {
+        height: 3fr;
+    }
+
+    .col {
+        width: 1fr;
+        layout: vertical;
+        border-right: solid $panel;
+    }
+
+    .col:last-of-type {
+        border-right: none;
+    }
+
+    /* ── Section label strip ────────────────────────────────── */
     .section-label {
         background: $accent;
         color: $text;
@@ -175,9 +240,9 @@ class OrchestratorTUI(App[None]):
         background: $panel;
     }
 
-    .count {
-        color: $text-muted;
-        text-style: italic;
+    .section-label.logs {
+        background: $warning;
+        color: $text;
     }
 
     QueueTable {
@@ -185,12 +250,10 @@ class OrchestratorTUI(App[None]):
         border: none;
     }
 
-    QueueTable.pending {
+    /* ── Log panel ──────────────────────────────────────────── */
+    #log-panel {
         height: 2fr;
-    }
-
-    QueueTable.finished {
-        height: 3fr;
+        border: none;
     }
     """
 
@@ -203,19 +266,31 @@ class OrchestratorTUI(App[None]):
     _running_count: reactive[int] = reactive(0)
     _finished_count: reactive[int] = reactive(0)
 
-    def __init__(self, db: OrchestratorDB) -> None:
+    def __init__(self, db: OrchestratorDB, log_file: Path) -> None:
         super().__init__()
         self._db = db
+        self._log_file = log_file
         self._bg_tasks: set[asyncio.Task[None]] = set()
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Label("⏳  PENDING", classes="section-label pending")
-        yield QueueTable("pending", id="pending-table", classes="pending")
-        yield Label("▶   RUNNING", classes="section-label running")
-        yield QueueTable("running", id="running-table", classes="running")
-        yield Label(f"✔   RECENTLY FINISHED (last {_FINISHED_LIMIT})", classes="section-label finished")
-        yield QueueTable("finished", id="finished-table", classes="finished")
+
+        with Horizontal(id="columns"):
+            with Vertical(classes="col", id="col-pending"):
+                yield Label("⏳  PENDING", classes="section-label pending")
+                yield QueueTable("pending", id="pending-table", classes="pending")
+
+            with Vertical(classes="col", id="col-running"):
+                yield Label("▶   RUNNING", classes="section-label running")
+                yield QueueTable("running", id="running-table", classes="running")
+
+            with Vertical(classes="col", id="col-finished"):
+                yield Label(f"✔   RECENTLY FINISHED (last {_FINISHED_LIMIT})", classes="section-label finished")
+                yield QueueTable("finished", id="finished-table", classes="finished")
+
+        yield Label("📋  LOGS", classes="section-label logs")
+        yield RichLog(id="log-panel", highlight=False, markup=True, wrap=False, auto_scroll=True)
+
         yield Footer()
 
     def on_mount(self) -> None:
@@ -230,6 +305,19 @@ class OrchestratorTUI(App[None]):
 
     async def _do_refresh(self) -> None:
         await self._load_data()
+
+    def _refresh_log_panel(self) -> None:
+        """Read the log file tail and repopulate the RichLog widget."""
+        log_panel = self.query_one("#log-panel", RichLog)
+        lines = _tail_lines(self._log_file, _LOG_DISPLAY_LINES)
+        log_panel.clear()
+        for line in lines:
+            ts, level, name, message = _parse_log_line(line)
+            style = _LOG_LEVEL_STYLE.get(level, "white")
+            ts_part = f"[dim]{ts}[/dim] " if ts else ""
+            level_part = f"[{style}]{level:<8}[/]"
+            name_part = f"[dim cyan]{name}[/dim cyan] " if name else ""
+            log_panel.write(f"{ts_part}{level_part} {name_part}{message}")
 
     async def _load_data(self) -> None:
         pending = await self._db.list_queue(status="pending")
@@ -258,10 +346,14 @@ class OrchestratorTUI(App[None]):
         self.query_one(".section-label.running", Label).update(f"▶   RUNNING  [{len(running)}]")
         self.query_one(".section-label.finished", Label).update(f"✔   RECENTLY FINISHED  [{len(finished)}]")
 
+        # Refresh log panel
+        self._refresh_log_panel()
+
 
 async def run_tui() -> None:
     """Open the DB connection and launch the TUI."""
     settings = OrchestratorSettings()
+    log_file = settings.logs_dir / "orchestrator.log"
     async with OrchestratorDB(settings.db_path) as db:
-        app = OrchestratorTUI(db)
+        app = OrchestratorTUI(db, log_file)
         await app.run_async()
