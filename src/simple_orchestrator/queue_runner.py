@@ -366,12 +366,13 @@ class QueueRunner:
         try:
             async with asyncio.timeout(effective_timeout * 60):
                 record = await vendor.wait(session_id)
-            final = record.status if record else "failed"
-            return final if final in ("completed", "failed", "killed") else "failed"
         except TimeoutError:
             logger.warning("%s %s [%s] timed out after %.1f minutes", label, item.id, info.label, effective_timeout)
             await vendor.kill(session_id)
             return "failed"
+        else:
+            final = record.status if record else "failed"
+            return final if final in ("completed", "failed", "killed") else "failed"
 
     def _workdir_lock(self, workdir: str) -> asyncio.Lock:
         if workdir not in self._workdir_locks:
