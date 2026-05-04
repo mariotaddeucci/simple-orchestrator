@@ -101,7 +101,8 @@ class OrchestratorDB(SessionHistoryDB):
     async def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
         assert self._conn
         _ident = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-        if not (_ident.match(table) and _ident.match(column) and _ident.match(col_type)):
+        _valid_types = {"TEXT", "INTEGER", "REAL", "BLOB", "NULL"}
+        if not (_ident.match(table) and _ident.match(column) and col_type.upper() in _valid_types):
             msg = f"Invalid SQL identifier in migration: table={table!r}, column={column!r}, col_type={col_type!r}"
             raise ValueError(msg)
         try:
