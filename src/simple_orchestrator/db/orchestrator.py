@@ -1,5 +1,6 @@
 import contextlib
 import json
+import re
 import sqlite3
 import subprocess
 import tempfile
@@ -99,6 +100,10 @@ class OrchestratorDB(SessionHistoryDB):
 
     async def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
         assert self._conn
+        _ident = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+        if not (_ident.match(table) and _ident.match(column) and _ident.match(col_type)):
+            msg = f"Invalid SQL identifier in migration: table={table!r}, column={column!r}, col_type={col_type!r}"
+            raise ValueError(msg)
         try:
             await self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
             await self._conn.commit()

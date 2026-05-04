@@ -307,12 +307,12 @@ class QueueRunner:
             try:
                 shutil.copytree(src, dst)
             except OSError:
-                shutil.rmtree(tmp_dir, ignore_errors=True)
                 logger.warning(
                     "skill_globs: failed to copy skill directory %s for agent %s",
                     src.name,
                     info.label,
                 )
+                shutil.rmtree(tmp_dir, ignore_errors=True)
                 raise
             result.append(SkillConfig(name=src.name, path=f"./{tmp_dir.name}/{src.name}"))
         logger.debug("skill_globs filtered %d skill(s) into %s", len(result), tmp_dir)
