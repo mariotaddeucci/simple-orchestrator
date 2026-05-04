@@ -158,21 +158,14 @@ class QueueRunner:
                 else:
                     session_id = await vendor.run(config)
                     await self._db.update_queue_item(item.id, status="running", session_id=session_id)
-
-                try:
-                    async with asyncio.timeout(effective_timeout * 60):
-                        record = await vendor.wait(session_id)
-                    final = record.status if record else "failed"
-                    queue_status = final if final in ("completed", "failed", "killed") else "failed"
-                except TimeoutError:
-                    logger.warning(
-                        "zombie %s [%s] timed out after %.1f minutes",
-                        item.id,
-                        info.label,
-                        effective_timeout,
-                    )
-                    await vendor.kill(session_id)
-                    queue_status = "failed"
+                queue_status = await self._await_session(
+                    vendor,
+                    session_id,
+                    item,
+                    info,
+                    effective_timeout,
+                    label="zombie",
+                )
             except Exception:
                 logger.exception("zombie %s [%s] raised an error", item.id, info.label)
                 queue_status = "failed"
@@ -232,16 +225,7 @@ class QueueRunner:
             try:
                 session_id = await vendor.run(config)
                 await self._db.update_queue_item(item.id, status="running", session_id=session_id)
-
-                try:
-                    async with asyncio.timeout(effective_timeout * 60):
-                        record = await vendor.wait(session_id)
-                    final = record.status if record else "failed"
-                    queue_status = final if final in ("completed", "failed", "killed") else "failed"
-                except TimeoutError:
-                    logger.warning("queue %s [%s] timed out after %.1f minutes", item.id, info.label, effective_timeout)
-                    await vendor.kill(session_id)
-                    queue_status = "failed"
+                queue_status = await self._await_session(vendor, session_id, item, info, effective_timeout)
             except Exception:
                 logger.exception("queue %s [%s] raised an error", item.id, info.label)
                 queue_status = "failed"
@@ -318,22 +302,19 @@ class QueueRunner:
 
         tmp_dir = Path(tempfile.mkdtemp(prefix=".skills-", dir=base))
         result: list[SkillConfig] = []
-        try:
-            for src in matches:
-                dst = tmp_dir / src.name
-                try:
-                    shutil.copytree(src, dst)
-                except OSError:
-                    logger.warning(
-                        "skill_globs: failed to copy skill directory %s for agent %s",
-                        src.name,
-                        info.label,
-                    )
-                    raise
-                result.append(SkillConfig(name=src.name, path=f"./{tmp_dir.name}/{src.name}"))
-        except Exception:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            raise
+        for src in matches:
+            dst = tmp_dir / src.name
+            try:
+                shutil.copytree(src, dst)
+            except OSError:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                logger.warning(
+                    "skill_globs: failed to copy skill directory %s for agent %s",
+                    src.name,
+                    info.label,
+                )
+                raise
+            result.append(SkillConfig(name=src.name, path=f"./{tmp_dir.name}/{src.name}"))
         logger.debug("skill_globs filtered %d skill(s) into %s", len(result), tmp_dir)
         return result, str(tmp_dir)
 
@@ -370,6 +351,27 @@ class QueueRunner:
         return None
 
     # ── helpers ───────────────────────────────────────────────────────────────
+
+    async def _await_session(
+        self,
+        vendor: BaseVendor,
+        session_id: str,
+        item: QueueItem,
+        info: _AgentInfo,
+        effective_timeout: float,
+        *,
+        label: str = "queue",
+    ) -> str:
+        """Wait for a vendor session to complete, enforcing the timeout. Returns the final queue status."""
+        try:
+            async with asyncio.timeout(effective_timeout * 60):
+                record = await vendor.wait(session_id)
+            final = record.status if record else "failed"
+            return final if final in ("completed", "failed", "killed") else "failed"
+        except TimeoutError:
+            logger.warning("%s %s [%s] timed out after %.1f minutes", label, item.id, info.label, effective_timeout)
+            await vendor.kill(session_id)
+            return "failed"
 
     def _workdir_lock(self, workdir: str) -> asyncio.Lock:
         if workdir not in self._workdir_locks:
