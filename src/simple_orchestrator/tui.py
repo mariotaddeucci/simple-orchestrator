@@ -35,6 +35,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Label, RichLog, S
 from .cron_runner import CronRunner
 from .db.orchestrator import OrchestratorDB
 from .mcp_server import serve_sse_async
+from .models.agent_record import AgentRecord
 from .polling_runner import PollingRunner
 from .queue_runner import QueueRunner
 from .settings import OrchestratorSettings, setup_logging
@@ -46,7 +47,6 @@ if TYPE_CHECKING:
     from textual.binding import BindingType
     from textual.widgets._data_table import ColumnKey
 
-    from .models.agent_record import AgentRecord
     from .models.queue_item import QueueItem
 
 _REFRESH_INTERVAL = 2.0  # seconds
@@ -637,6 +637,30 @@ class OrchestratorTUI(App[None]):
             name_part = f"[dim cyan]{name}[/dim cyan] " if name else ""
             log_panel.write(f"{ts_part}{level_part} {name_part}{message}")
 
+    async def _merge_agents(self) -> list[AgentRecord]:
+        """Merge agents from settings and DB (settings take priority, matching QueueRunner behavior)."""
+        db_agents = await self._db.list_agents()
+        agents_map: dict[str, AgentRecord] = {}
+
+        # First add DB agents
+        for agent in db_agents:
+            agents_map[agent.id] = agent
+
+        # Then add/override with settings agents (TOML takes priority)
+        for agent_id, agent_settings in self._settings.agents.items():
+            agents_map[agent_id] = AgentRecord(
+                id=agent_id,
+                name=agent_settings.name,
+                nickname=agent_settings.nickname,
+                prompt=agent_settings.resolve_prompt(),
+                model=agent_settings.model,
+                vendor=agent_settings.vendor,
+                workdir=agent_settings.workdir,
+                created_at=datetime.now(UTC),  # TOML agents don't have a creation time
+            )
+
+        return list(agents_map.values())
+
     async def _load_data(self) -> None:
         pending = await self._db.list_queue(status="pending")
         running = await self._db.list_queue(status="running")
@@ -647,15 +671,15 @@ class OrchestratorTUI(App[None]):
         finished.sort(key=lambda i: i.ended_at or datetime.min.replace(tzinfo=UTC), reverse=True)
         finished = finished[:_FINISHED_LIMIT]
 
-        # Build agent label map: prefer nickname over name, fall back to agent_id in display
-        db_agents = await self._db.list_agents()
-        self._agents = db_agents  # Store for later use
-        agent_labels: dict[str, str] = {a.id: a.nickname or a.name for a in db_agents}
+        # Merge agents from settings and DB (settings take priority, matching QueueRunner behavior)
+        all_agents = await self._merge_agents()
+        self._agents = all_agents  # Store for later use
+        agent_labels: dict[str, str] = {a.id: a.nickname or a.name for a in all_agents}
 
         # Update sidebar with agent cards
         sidebar_agents = self.query_one("#sidebar-agents", ScrollableContainer)
         sidebar_agents.remove_children()
-        for agent in db_agents:
+        for agent in all_agents:
             sidebar_agents.mount(AgentCard(agent))
 
         # Update sidebar with scheduled events
@@ -717,7 +741,7 @@ class OrchestratorTUI(App[None]):
         self.query_one(".section-label.pending", Label).update(f"⏳  PENDING  [{len(pending)}]")
         self.query_one(".section-label.running", Label).update(f"▶   RUNNING  [{len(running)}]")
         self.query_one(".section-label.finished", Label).update(f"✔   RECENTLY FINISHED  [{len(finished)}]")
-        self.query_one(".section-label.agents", Label).update(f"👥  AGENTS  [{len(db_agents)}]")
+        self.query_one(".section-label.agents", Label).update(f"👥  AGENTS  [{len(all_agents)}]")
         self.query_one(".section-label.events", Label).update(f"📆  SCHEDULED EVENTS  [{len(scheduled_events)}]")
 
         # Refresh log panel
