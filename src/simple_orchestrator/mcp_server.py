@@ -20,6 +20,8 @@ Or globally (all agents):
 """
 
 import json
+import logging
+from collections.abc import Callable
 from functools import cache
 from typing import Annotated, Literal
 
@@ -28,6 +30,7 @@ from pydantic import BaseModel, Field
 from ulid import ULID
 
 from .db.orchestrator import OrchestratorDB
+from .prompts import get_prompt_content, list_prompt_names, parse_prompt_metadata
 from .settings import OrchestratorSettings
 from .validators import (
     MAX_DESCRIPTION_LENGTH,
@@ -54,6 +57,42 @@ mcp = FastMCP(
 @cache
 def _get_settings() -> OrchestratorSettings:
     return OrchestratorSettings()
+
+
+def _register_prompts() -> None:
+    """Register all prompts from the prompts/ directory dynamically."""
+    logger = logging.getLogger(__name__)
+
+    for prompt_name in list_prompt_names():
+        try:
+            content = get_prompt_content(prompt_name)
+            title, description = parse_prompt_metadata(content)
+
+            # Use title from metadata or fallback to filename
+            display_name = title or prompt_name.replace("-", " ").title()
+
+            # Create a closure to capture the content for this specific prompt
+            def make_prompt_function(prompt_content: str) -> Callable[[], str]:
+                def prompt_function() -> str:
+                    return prompt_content
+
+                return prompt_function
+
+            # Register the prompt with MCP
+            prompt_fn = make_prompt_function(content)
+            prompt_fn.__name__ = prompt_name.replace("-", "_")
+            mcp.prompt(
+                prompt_fn,
+                name=prompt_name,
+                description=description or f"Prompt template: {display_name}",
+            )
+        except Exception as e:
+            # Log but don't fail if a single prompt can't be loaded
+            logger.warning(f"Failed to register prompt {prompt_name!r}: {e}")
+
+
+# Register all prompts at module load time
+_register_prompts()
 
 
 def _prompt_description(prompt: str) -> str:
