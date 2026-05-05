@@ -6,26 +6,39 @@ Displays three columns (auto-refreshed every 2 s):
   • Running   — items currently being executed
   • Finished  — the last N completed/failed/killed/cancelled items
 
+A sidebar shows agents and scheduled events (polling and cron schedules).
 A log panel at the bottom shows recent entries from the orchestrator log file.
 
 Launch via:
     simple-orchestrator tui
+    simple-orchestrator    # defaults to TUI
+
+Background processes (QueueRunner, PollingRunner, CronRunner, MCP server) run
+automatically when the TUI is started.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from croniter import croniter
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Label, RichLog, Static, TextArea
 
+from .cron_runner import CronRunner
 from .db.orchestrator import OrchestratorDB
-from .settings import OrchestratorSettings
+from .mcp_server import serve_sse_async
+from .polling_runner import PollingRunner
+from .queue_runner import QueueRunner
+from .settings import OrchestratorSettings, setup_logging
+from .vendors import ClaudeCodeVendor
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -122,6 +135,77 @@ def _truncate(text: str, max_len: int = 60) -> str:
 def _styled(text: str, status: str) -> str:
     style = _STATUS_STYLE.get(status, "")
     return f"[{style}]{text}[/]" if style else text
+
+
+def _format_next_run(next_run: datetime) -> str:
+    """Format next run time as relative time from now."""
+    now = datetime.now(UTC)
+    delta = next_run - now
+    total_seconds = int(delta.total_seconds())
+
+    if total_seconds < 0:
+        return "overdue"
+
+    if total_seconds < 60:
+        return f"in {total_seconds}s"
+
+    minutes = total_seconds // 60
+    if minutes < 60:
+        return f"in {minutes}m"
+
+    hours = minutes // 60
+    if hours < 24:
+        return f"in {hours}h"
+
+    days = hours // 24
+    return f"in {days}d"
+
+
+class ScheduledEventCard(Static):
+    """A card displaying a scheduled event (polling or cron)."""
+
+    DEFAULT_CSS = """
+    ScheduledEventCard {
+        height: auto;
+        border: solid $accent-darken-1;
+        background: $panel;
+        padding: 1 2;
+        margin: 1 0;
+    }
+
+    ScheduledEventCard .event-type {
+        text-style: bold;
+        color: $warning;
+    }
+
+    ScheduledEventCard .event-agent {
+        color: $text;
+    }
+
+    ScheduledEventCard .event-next-run {
+        color: $success;
+        text-style: dim;
+    }
+
+    ScheduledEventCard .event-schedule {
+        color: $text-muted;
+        text-style: dim;
+    }
+    """
+
+    def __init__(self, event_type: str, agent_id: str, schedule: str, next_run: datetime, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.event_type = event_type  # "polling" or "cron"
+        self.agent_id = agent_id
+        self.schedule = schedule
+        self.next_run = next_run
+
+    def compose(self) -> ComposeResult:
+        type_icon = "⏱️" if self.event_type == "polling" else "📅"
+        yield Label(f"{type_icon} {self.event_type.upper()}", classes="event-type")
+        yield Label(f"Agent: {self.agent_id}", classes="event-agent")
+        yield Label(f"Next: {_format_next_run(self.next_run)}", classes="event-next-run")
+        yield Label(f"Schedule: {self.schedule}", classes="event-schedule")
 
 
 class AgentCard(Static):
@@ -330,19 +414,30 @@ class OrchestratorTUI(App[None]):
         layout: horizontal;
     }
 
-    /* ── Sidebar for agents ────────────────────────────────── */
+    /* ── Sidebar for agents and scheduled events ───────────── */
     #sidebar {
-        width: 25;
+        width: 28;
         border-right: solid $accent;
         background: $panel;
     }
 
-    #sidebar-container {
-        height: 1fr;
+    #sidebar-agents {
+        height: auto;
+        max-height: 50%;
+    }
+
+    #sidebar-events {
+        height: auto;
+        max-height: 50%;
     }
 
     .section-label.agents {
         background: $primary;
+        color: $text;
+    }
+
+    .section-label.events {
+        background: $warning;
         color: $text;
     }
 
@@ -410,20 +505,34 @@ class OrchestratorTUI(App[None]):
     _running_count: reactive[int] = reactive(0)
     _finished_count: reactive[int] = reactive(0)
 
-    def __init__(self, db: OrchestratorDB, log_file: Path) -> None:
+    def __init__(
+        self,
+        db: OrchestratorDB,
+        log_file: Path,
+        settings: OrchestratorSettings,
+        runner: QueueRunner | None = None,
+        poller: PollingRunner | None = None,
+        cron_runner: CronRunner | None = None,
+    ) -> None:
         super().__init__()
         self._db = db
         self._log_file = log_file
+        self._settings = settings
         self._bg_tasks: set[asyncio.Task[None]] = set()
         self._agents: list[AgentRecord] = []  # Store agents for interaction
+        self._runner = runner
+        self._poller = poller
+        self._cron_runner = cron_runner
 
     def compose(self) -> ComposeResult:
         yield Header()
 
-        # Sidebar with agents
+        # Sidebar with agents and scheduled events
         with Vertical(id="sidebar"):
             yield Label("👥  AGENTS", classes="section-label agents")
-            yield ScrollableContainer(id="sidebar-container")
+            yield ScrollableContainer(id="sidebar-agents")
+            yield Label("📆  SCHEDULED EVENTS", classes="section-label events")
+            yield ScrollableContainer(id="sidebar-events")
 
         # Main content area
         with Vertical(id="main-content"):
@@ -544,10 +653,57 @@ class OrchestratorTUI(App[None]):
         agent_labels: dict[str, str] = {a.id: a.nickname or a.name for a in db_agents}
 
         # Update sidebar with agent cards
-        sidebar = self.query_one("#sidebar-container", ScrollableContainer)
-        sidebar.remove_children()
+        sidebar_agents = self.query_one("#sidebar-agents", ScrollableContainer)
+        sidebar_agents.remove_children()
         for agent in db_agents:
-            sidebar.mount(AgentCard(agent))
+            sidebar_agents.mount(AgentCard(agent))
+
+        # Update sidebar with scheduled events
+        sidebar_events = self.query_one("#sidebar-events", ScrollableContainer)
+        sidebar_events.remove_children()
+
+        # Collect all scheduled events with their next run times
+        scheduled_events: list[tuple[datetime, str, str, str]] = []  # (next_run, type, agent_id, schedule)
+
+        # Add polling events
+        for polling in self._settings.pollings:
+            now = datetime.now(UTC)
+            # Calculate next run based on interval
+            # Use a key for tracking last run time (similar to cron)
+            key = f"polling_{polling.agent_id}_{polling.prompt}"
+            last_run = await self._db.get_cron_last_run(key)
+            if last_run:
+                # Calculate next run from last run + interval
+                next_run = datetime.fromtimestamp(last_run.timestamp() + polling.interval_minutes * 60, UTC)
+            else:
+                # First run is immediate (already happened at startup), so next is now + interval
+                next_run = datetime.now(UTC)
+
+            schedule_str = f"every {polling.interval_minutes}m"
+            scheduled_events.append((next_run, "polling", polling.agent_id, schedule_str))
+
+        # Add cron events
+        for cron_cfg in self._settings.crons:
+            key = f"cron_{cron_cfg.agent_id}_{cron_cfg.prompt}"
+            last_run = await self._db.get_cron_last_run(key)
+            now = datetime.now(UTC)
+
+            if last_run:
+                ci = croniter(cron_cfg.cron, last_run.replace(tzinfo=None))
+                next_run = ci.get_next(datetime).replace(tzinfo=UTC)
+            else:
+                # Never run before - next run is now or calculated from now
+                ci = croniter(cron_cfg.cron, now.replace(tzinfo=None))
+                next_run = ci.get_next(datetime).replace(tzinfo=UTC)
+
+            scheduled_events.append((next_run, "cron", cron_cfg.agent_id, cron_cfg.cron))
+
+        # Sort by next run time (soonest first)
+        scheduled_events.sort(key=lambda x: x[0])
+
+        # Mount scheduled event cards
+        for next_run, event_type, agent_id, schedule in scheduled_events:
+            sidebar_events.mount(ScheduledEventCard(event_type, agent_id, schedule, next_run))
 
         pending_table = self.query_one("#pending-table", QueueTable)
         running_table = self.query_one("#running-table", QueueTable)
@@ -562,15 +718,54 @@ class OrchestratorTUI(App[None]):
         self.query_one(".section-label.running", Label).update(f"▶   RUNNING  [{len(running)}]")
         self.query_one(".section-label.finished", Label).update(f"✔   RECENTLY FINISHED  [{len(finished)}]")
         self.query_one(".section-label.agents", Label).update(f"👥  AGENTS  [{len(db_agents)}]")
+        self.query_one(".section-label.events", Label).update(f"📆  SCHEDULED EVENTS  [{len(scheduled_events)}]")
 
         # Refresh log panel
         self._refresh_log_panel()
 
 
 async def run_tui() -> None:
-    """Open the DB connection and launch the TUI."""
+    """Open the DB connection, start background processes, and launch the TUI."""
     settings = OrchestratorSettings()
+    setup_logging(settings)
     log_file = settings.logs_dir / "orchestrator.log"
+
+    log = logging.getLogger(__name__)
+    log.info("Starting TUI with background processes")
+
     async with OrchestratorDB(settings.db_path) as db:
-        app = OrchestratorTUI(db, log_file)
-        await app.run_async()
+        # Initialize vendors
+        vendors: dict = {"claude_code": ClaudeCodeVendor(db)}
+
+        # Create runners
+        runner = QueueRunner(db, vendors, settings)
+        poller = PollingRunner(db, settings.pollings)
+        cron_runner = CronRunner(db, settings)
+
+        # Create TUI app
+        app = OrchestratorTUI(db, log_file, settings, runner, poller, cron_runner)
+
+        # Start background tasks
+        async def run_background_services() -> None:
+            """Run all background services concurrently."""
+            try:
+                await asyncio.gather(
+                    runner.run_forever(),
+                    poller.run_forever(),
+                    cron_runner.run_forever(),
+                    serve_sse_async(settings.mcp_server_host, settings.mcp_server_port),
+                )
+            except asyncio.CancelledError:
+                log.info("Background services cancelled")
+                raise
+
+        # Run TUI and background services concurrently
+        bg_task = asyncio.create_task(run_background_services())
+        try:
+            await app.run_async()
+        finally:
+            # Cancel background services when TUI exits
+            bg_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await bg_task
+            log.info("TUI and background processes stopped")
