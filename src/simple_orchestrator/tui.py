@@ -249,10 +249,15 @@ class AgentCard(Static):
 
     async def on_click(self) -> None:
         """Open prompt input modal when card is clicked."""
+        log = logging.getLogger(__name__)
+        log.info("AgentCard clicked for agent: %s", self.agent.id)
 
         async def handle_prompt(prompt: str | None) -> None:
+            log.info("handle_prompt callback invoked with prompt: %s", prompt[:50] if prompt else None)
             if prompt and isinstance(self.app, OrchestratorTUI):
+                log.info("Calling enqueue_prompt for agent %s", self.agent.id)
                 await self.app.enqueue_prompt(self.agent, prompt)
+                log.info("enqueue_prompt completed for agent %s", self.agent.id)
 
         await self.app.push_screen(PromptModal(self.agent), handle_prompt)
 
@@ -569,8 +574,12 @@ class OrchestratorTUI(App[None]):
 
     async def enqueue_prompt(self, agent: AgentRecord, prompt: str) -> None:
         """Enqueue a new task for the given agent with the provided prompt."""
-        await self._db.enqueue(agent_id=agent.id, prompt=prompt)
+        log = logging.getLogger(__name__)
+        log.info("TUI enqueue_prompt: agent_id=%s, prompt=%s", agent.id, prompt[:50])
+        item = await self._db.enqueue(agent_id=agent.id, prompt=prompt)
+        log.info("TUI enqueue_prompt: item created with id=%s, status=%s", item.id, item.status)
         await self._load_data()
+        log.info("TUI enqueue_prompt: data reloaded")
 
     def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
         """Handle cell selection in queue tables to trigger kill/cancel actions."""

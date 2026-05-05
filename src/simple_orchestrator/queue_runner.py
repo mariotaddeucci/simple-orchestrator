@@ -182,6 +182,7 @@ class QueueRunner:
             await self._semaphore.acquire()
             item = await self._db.dequeue_next()
             if item:
+                logger.info("QueueRunner: dequeued item id=%s agent_id=%s", item.id, item.agent_id)
                 task = asyncio.create_task(self._dispatch(item))
                 self._dispatch_tasks.add(task)
                 task.add_done_callback(self._dispatch_tasks.discard)
@@ -190,6 +191,7 @@ class QueueRunner:
                 await asyncio.sleep(self._poll_interval)
 
     async def _dispatch(self, item: QueueItem) -> None:
+        logger.info("QueueRunner._dispatch: starting item id=%s agent_id=%s", item.id, item.agent_id)
         info = await self._resolve_agent(item.agent_id)
         # Determine the effective workdir for serialisation: item overrides agent.
         # If neither specifies one, use item.id as a unique key so the task never
@@ -197,13 +199,16 @@ class QueueRunner:
         workdir = item.workdir or (info.workdir if info else None) or item.id
         try:
             async with self._workdir_lock(workdir):
+                logger.info("QueueRunner._dispatch: acquired lock for workdir=%s item id=%s", workdir, item.id)
                 await self._process(item, info)
         finally:
+            logger.info("QueueRunner._dispatch: released lock for workdir=%s item id=%s", workdir, item.id)
             self._semaphore.release()
 
     # ── execution ─────────────────────────────────────────────────────────────
 
     async def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
+        logger.info("QueueRunner._process: processing item id=%s agent_id=%s", item.id, item.agent_id)
         if not info:
             logger.error("queue %s: agent '%s' not found in settings", item.id, item.agent_id)
             await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
@@ -215,6 +220,7 @@ class QueueRunner:
             await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
+        logger.info("QueueRunner._process: starting vendor session for item id=%s", item.id)
         filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
         try:
             config = self._build_session_config(item, info, extra_skills=filtered_skills)
@@ -223,6 +229,11 @@ class QueueRunner:
             )
             try:
                 session_id = await vendor.run(config)
+                logger.info(
+                    "QueueRunner._process: vendor session started session_id=%s for item id=%s",
+                    session_id,
+                    item.id,
+                )
                 await self._db.update_queue_item(item.id, status="running", session_id=session_id)
                 queue_status = await self._await_session(vendor, session_id, item, info, effective_timeout)
             except Exception:

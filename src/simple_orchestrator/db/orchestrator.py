@@ -1,5 +1,6 @@
 import contextlib
 import json
+import logging
 import re
 import sqlite3
 import subprocess
@@ -13,6 +14,8 @@ from ulid import ULID
 from simple_orchestrator.db.history import SessionHistoryDB
 from simple_orchestrator.models.memory_record import MemoryRecord
 from simple_orchestrator.models.queue_item import QueueItem
+
+logger = logging.getLogger(__name__)
 
 
 def _new_ulid() -> str:
@@ -119,6 +122,7 @@ class OrchestratorDB(SessionHistoryDB):
             created_at=datetime.now(UTC),
             depends_on=depends_on or [],
         )
+        logger.info("DB enqueue: creating item id=%s agent_id=%s workdir=%s", item.id, agent_id, item.workdir)
         await self._conn.execute(
             "INSERT INTO queue (id, agent_id, prompt, workdir, status, created_at, depends_on) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -133,6 +137,7 @@ class OrchestratorDB(SessionHistoryDB):
             ),
         )
         await self._conn.commit()
+        logger.info("DB enqueue: committed item id=%s status=%s", item.id, item.status)
         return item
 
     async def dequeue_next(self) -> QueueItem | None:
@@ -149,16 +154,20 @@ class OrchestratorDB(SessionHistoryDB):
         ) as cursor:
             rows = await cursor.fetchall()
 
+        rows_list = list(rows)
+        logger.debug("DB dequeue_next: found %d pending items", len(rows_list))
         now = datetime.now(UTC).isoformat()
-        for row in rows:
+        for row in rows_list:
             item = _row_to_queue(row)
             if not item.depends_on:
                 # No dependencies — claim immediately.
+                logger.info("DB dequeue_next: claiming item id=%s agent_id=%s", item.id, item.agent_id)
                 await self._conn.execute(
                     "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
                     (now, item.id),
                 )
                 await self._conn.commit()
+                logger.info("DB dequeue_next: claimed item id=%s, now running", item.id)
                 return item
 
             # Fetch statuses of all dependency tasks.
