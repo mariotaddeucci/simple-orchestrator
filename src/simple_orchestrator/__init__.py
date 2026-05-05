@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import logging
 
+from .cron_runner import CronRunner
 from .db import OrchestratorDB, SessionHistoryDB
 from .mcp_server import serve, serve_sse_async
 from .models import (
@@ -30,6 +31,7 @@ __all__ = [
     "AgentSettings",
     "BaseVendor",
     "ClaudeCodeVendor",
+    "CronRunner",
     "GithubCopilotVendor",
     "McpConfig",
     "McpHttpConfig",
@@ -58,7 +60,7 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser(
         "start",
-        help="Start queue runner + MCP server (SSE on configured host:port)",
+        help="Start queue runner + MCP server (SSE on configured host:port) without TUI",
     )
     subparsers.add_parser(
         "mcp-server",
@@ -66,7 +68,7 @@ def main() -> None:
     )
     subparsers.add_parser(
         "tui",
-        help="Open the terminal dashboard to monitor the queue",
+        help="Open the terminal dashboard with background processes",
     )
 
     args = parser.parse_args()
@@ -81,7 +83,8 @@ def main() -> None:
         asyncio.run(run_tui())
 
     else:
-        parser.print_help()
+        # Default to TUI when no command is specified
+        asyncio.run(run_tui())
 
 
 async def _start() -> None:
