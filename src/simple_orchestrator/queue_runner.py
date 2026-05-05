@@ -35,9 +35,8 @@ class QueueRunner:
     """
     Processes queue items with bounded parallelism and per-workdir exclusion.
 
-    Agent resolution order:
-      1. settings.agents (TOML — versionable)
-      2. DB agents table (programmatically registered)
+    Agent resolution:
+      - Agents are resolved from settings.agents (TOML configuration only)
 
     Concurrency rules:
       - At most `settings.max_active_sessions` items run simultaneously.
@@ -136,7 +135,7 @@ class QueueRunner:
     async def _resume_process(self, item: QueueItem) -> None:
         info = await self._resolve_agent(item.agent_id)
         if not info:
-            logger.error("zombie %s: agent '%s' not found in settings or DB", item.id, item.agent_id)
+            logger.error("zombie %s: agent '%s' not found in settings", item.id, item.agent_id)
             await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
@@ -206,7 +205,7 @@ class QueueRunner:
 
     async def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
         if not info:
-            logger.error("queue %s: agent '%s' not found in settings or DB", item.id, item.agent_id)
+            logger.error("queue %s: agent '%s' not found in settings", item.id, item.agent_id)
             await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
@@ -321,7 +320,7 @@ class QueueRunner:
     # ── agent resolution ──────────────────────────────────────────────────────
 
     async def _resolve_agent(self, agent_id: str) -> _AgentInfo | None:
-        """Settings (TOML) take priority; DB agents are the fallback."""
+        """Resolve agent from TOML settings only."""
         agent_s: AgentSettings | None = self._settings.agents.get(agent_id)
         if agent_s:
             return _AgentInfo(
@@ -334,18 +333,6 @@ class QueueRunner:
                 skills=list(agent_s.skills),
                 timeout_minutes=agent_s.task_timeout_minutes,
                 skill_globs=list(agent_s.skill_globs),
-            )
-
-        agent_r = await self._db.get_agent(agent_id)
-        if agent_r:
-            return _AgentInfo(
-                label=agent_r.nickname or agent_r.name,
-                vendor=agent_r.vendor,
-                workdir=agent_r.workdir,
-                prompt=agent_r.prompt,
-                model=agent_r.model,
-                mcp_servers={},
-                skills=[],
             )
 
         return None

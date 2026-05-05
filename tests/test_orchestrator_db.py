@@ -1,4 +1,4 @@
-"""Integration tests for OrchestratorDB — agents, queue, memory, cron state."""
+"""Integration tests for OrchestratorDB — queue, memory, cron state."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,62 +17,16 @@ async def db(tmp_path):
     await db.close()
 
 
-# ── agents ────────────────────────────────────────────────────────────────────
-
-
-async def test_register_and_get_agent(db):
-    agent = await db.register_agent(
-        name="Reviewer",
-        prompt="You review code.",
-        vendor="claude",
-        workdir="/workspace",
-        model="claude-opus",
-        nickname="reviewer",
-    )
-    assert agent.id
-    assert agent.name == "Reviewer"
-    assert agent.vendor == "claude"
-    assert agent.nickname == "reviewer"
-
-    fetched = await db.get_agent(agent.id)
-    assert fetched is not None
-    assert fetched.id == agent.id
-    assert fetched.model == "claude-opus"
-
-
-async def test_get_agent_missing_returns_none(db):
-    result = await db.get_agent("nonexistent")
-    assert result is None
-
-
-async def test_list_agents(db):
-    await db.register_agent(name="A1", prompt="p1", vendor="claude")
-    await db.register_agent(name="A2", prompt="p2", vendor="openai")
-    await db.register_agent(name="A3", prompt="p3", vendor="claude")
-
-    all_agents = await db.list_agents()
-    assert len(all_agents) == 3
-
-    claude_agents = await db.list_agents(vendor="claude")
-    assert len(claude_agents) == 2
-    assert all(a.vendor == "claude" for a in claude_agents)
-
-
-async def test_delete_agent(db):
-    agent = await db.register_agent(name="Temp", prompt="tmp", vendor="v1")
-    await db.delete_agent(agent.id)
-    assert await db.get_agent(agent.id) is None
-
-
 # ── queue ─────────────────────────────────────────────────────────────────────
 
 
 async def test_enqueue_and_dequeue(db):
-    agent = await db.register_agent(name="Worker", prompt="work prompt", vendor="claude")
+    # Use a direct agent_id (agents are no longer in DB, only in TOML config)
+    agent_id = "test-agent-1"
 
-    item = await db.enqueue(agent.id, "Do the task")
+    item = await db.enqueue(agent_id, "Do the task")
     assert item.status == "pending"
-    assert item.agent_id == agent.id
+    assert item.agent_id == agent_id
     assert item.prompt == "Do the task"
 
     dequeued = await db.dequeue_next()
@@ -89,9 +43,9 @@ async def test_enqueue_and_dequeue(db):
 
 
 async def test_dequeue_fifo_order(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item1 = await db.enqueue(agent.id, "first")
-    item2 = await db.enqueue(agent.id, "second")
+    agent_id = "test-agent-1"
+    item1 = await db.enqueue(agent_id, "first")
+    item2 = await db.enqueue(agent_id, "second")
 
     d1 = await db.dequeue_next()
     d2 = await db.dequeue_next()
@@ -102,8 +56,8 @@ async def test_dequeue_fifo_order(db):
 
 
 async def test_cancel_queue_item(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item = await db.enqueue(agent.id, "cancelable task")
+    agent_id = "test-agent-1"
+    item = await db.enqueue(agent_id, "cancelable task")
     await db.cancel_queue_item(item.id)
 
     result = await db.get_queue_item(item.id)
@@ -115,8 +69,8 @@ async def test_cancel_queue_item(db):
 
 
 async def test_update_queue_item(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item = await db.enqueue(agent.id, "updatable task")
+    agent_id = "test-agent-1"
+    item = await db.enqueue(agent_id, "updatable task")
 
     ended = datetime.now(UTC)
     await db.update_queue_item(item.id, status="completed", session_id="sess-xyz", ended_at=ended)
@@ -129,17 +83,17 @@ async def test_update_queue_item(db):
 
 
 async def test_has_duplicate_pending(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    await db.enqueue(agent.id, "same prompt")
+    agent_id = "test-agent-1"
+    await db.enqueue(agent_id, "same prompt")
 
-    assert await db.has_duplicate_pending(agent.id, "same prompt") is True
-    assert await db.has_duplicate_pending(agent.id, "different prompt") is False
+    assert await db.has_duplicate_pending(agent_id, "same prompt") is True
+    assert await db.has_duplicate_pending(agent_id, "different prompt") is False
 
 
 async def test_list_queue_with_filters(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    await db.enqueue(agent.id, "task1")
-    item2 = await db.enqueue(agent.id, "task2")
+    agent_id = "test-agent-1"
+    await db.enqueue(agent_id, "task1")
+    item2 = await db.enqueue(agent_id, "task2")
     await db.cancel_queue_item(item2.id)
 
     pending = await db.list_queue(status="pending")
@@ -150,26 +104,26 @@ async def test_list_queue_with_filters(db):
 
 
 async def test_list_queue_by_agent(db):
-    a1 = await db.register_agent(name="A1", prompt="p", vendor="v")
-    a2 = await db.register_agent(name="A2", prompt="p", vendor="v")
-    await db.enqueue(a1.id, "t1")
-    await db.enqueue(a2.id, "t2")
-    await db.enqueue(a1.id, "t3")
+    a1 = "agent-1"
+    a2 = "agent-2"
+    await db.enqueue(a1, "t1")
+    await db.enqueue(a2, "t2")
+    await db.enqueue(a1, "t3")
 
-    items = await db.list_queue(agent_id=a1.id)
+    items = await db.list_queue(agent_id=a1)
     assert len(items) == 2
-    assert all(i.agent_id == a1.id for i in items)
+    assert all(i.agent_id == a1 for i in items)
 
 
 # ── memory ────────────────────────────────────────────────────────────────────
 
 
 async def test_save_and_get_memory(db):
-    agent = await db.register_agent(name="A", prompt="p", vendor="v")
-    mem = await db.save_memory(agent.id, "key insight", "The answer is 42")
+    agent_id = "test-agent-1"
+    mem = await db.save_memory(agent_id, "key insight", "The answer is 42")
 
     assert mem.id
-    assert mem.agent_id == agent.id
+    assert mem.agent_id == agent_id
     assert mem.description == "key insight"
     assert mem.content == "The answer is 42"
 
@@ -179,8 +133,8 @@ async def test_save_and_get_memory(db):
 
 
 async def test_delete_memory(db):
-    agent = await db.register_agent(name="A", prompt="p", vendor="v")
-    mem = await db.save_memory(agent.id, "desc", "content")
+    agent_id = "test-agent-1"
+    mem = await db.save_memory(agent_id, "desc", "content")
     deleted = await db.delete_memory(mem.id)
     assert deleted is True
     assert await db.get_memory(mem.id) is None
@@ -190,16 +144,16 @@ async def test_delete_memory(db):
 
 
 async def test_list_memories(db):
-    a1 = await db.register_agent(name="A1", prompt="p", vendor="v")
-    a2 = await db.register_agent(name="A2", prompt="p", vendor="v")
-    await db.save_memory(a1.id, "d1", "c1")
-    await db.save_memory(a1.id, "d2", "c2")
-    await db.save_memory(a2.id, "d3", "c3")
+    a1 = "agent-1"
+    a2 = "agent-2"
+    await db.save_memory(a1, "d1", "c1")
+    await db.save_memory(a1, "d2", "c2")
+    await db.save_memory(a2, "d3", "c3")
 
     all_mems = await db.list_memories()
     assert len(all_mems) == 3
 
-    a1_mems = await db.list_memories(agent_id=a1.id)
+    a1_mems = await db.list_memories(agent_id=a1)
     assert len(a1_mems) == 2
 
 
@@ -229,15 +183,15 @@ async def test_cron_state_upsert(db):
 
 
 async def test_enqueue_agent_nickname_on_agent(db):
-    agent = await db.register_agent(name="Named Agent", prompt="p", vendor="v", nickname="my-nick")
-    assert agent.nickname == "my-nick"
-    item = await db.enqueue(agent.id, "some task")
-    assert item.agent_id == agent.id
+    # Agents are now only in TOML, not in DB, so we just test that enqueue works with any agent_id
+    agent_id = "my-agent-with-nick"
+    item = await db.enqueue(agent_id, "some task")
+    assert item.agent_id == agent_id
 
 
 async def test_enqueue_with_workdir(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item = await db.enqueue(agent.id, "task with workdir", workdir="/my/project")
+    agent_id = "test-agent-1"
+    item = await db.enqueue(agent_id, "task with workdir", workdir="/my/project")
     assert item.workdir == "/my/project"
 
     fetched = await db.get_queue_item(item.id)
@@ -246,8 +200,8 @@ async def test_enqueue_with_workdir(db):
 
 
 async def test_enqueue_without_workdir_creates_temp_dir(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item = await db.enqueue(agent.id, "task no workdir")
+    agent_id = "test-agent-1"
+    item = await db.enqueue(agent_id, "task no workdir")
     assert item.workdir is not None
     assert Path(item.workdir).exists()
 
@@ -276,9 +230,9 @@ async def test_sessions_table_accessible_from_orchestrator_db(db):
 
 
 async def test_enqueue_with_depends_on(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    dep = await db.enqueue(agent.id, "dependency task")
-    item = await db.enqueue(agent.id, "dependent task", depends_on=[dep.id])
+    agent_id = "test-agent-1"
+    dep = await db.enqueue(agent_id, "dependency task")
+    item = await db.enqueue(agent_id, "dependent task", depends_on=[dep.id])
 
     assert item.depends_on == [dep.id]
     fetched = await db.get_queue_item(item.id)
@@ -287,8 +241,8 @@ async def test_enqueue_with_depends_on(db):
 
 
 async def test_enqueue_without_depends_on_defaults_to_empty(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item = await db.enqueue(agent.id, "independent task")
+    agent_id = "test-agent-1"
+    item = await db.enqueue(agent_id, "independent task")
     assert item.depends_on == []
 
     fetched = await db.get_queue_item(item.id)
@@ -297,9 +251,9 @@ async def test_enqueue_without_depends_on_defaults_to_empty(db):
 
 
 async def test_dequeue_skips_item_with_pending_dep(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    dep = await db.enqueue(agent.id, "dep task")
-    await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+    agent_id = "test-agent-1"
+    dep = await db.enqueue(agent_id, "dep task")
+    await db.enqueue(agent_id, "blocked task", depends_on=[dep.id])
 
     # dep is still pending, so blocked task should not be dequeued
     dequeued = await db.dequeue_next()
@@ -311,9 +265,9 @@ async def test_dequeue_skips_item_with_pending_dep(db):
 
 
 async def test_dequeue_claims_item_when_dep_completed(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    dep = await db.enqueue(agent.id, "dep task")
-    item = await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+    agent_id = "test-agent-1"
+    dep = await db.enqueue(agent_id, "dep task")
+    item = await db.enqueue(agent_id, "blocked task", depends_on=[dep.id])
 
     # Complete the dependency
     await db.update_queue_item(dep.id, status="completed")
@@ -324,9 +278,9 @@ async def test_dequeue_claims_item_when_dep_completed(db):
 
 
 async def test_dequeue_auto_fails_item_when_dep_failed(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    dep = await db.enqueue(agent.id, "dep task")
-    item = await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+    agent_id = "test-agent-1"
+    dep = await db.enqueue(agent_id, "dep task")
+    item = await db.enqueue(agent_id, "blocked task", depends_on=[dep.id])
 
     await db.update_queue_item(dep.id, status="failed")
 
@@ -340,9 +294,9 @@ async def test_dequeue_auto_fails_item_when_dep_failed(db):
 
 
 async def test_dequeue_auto_fails_item_when_dep_cancelled(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    dep = await db.enqueue(agent.id, "dep task")
-    item = await db.enqueue(agent.id, "blocked task", depends_on=[dep.id])
+    agent_id = "test-agent-1"
+    dep = await db.enqueue(agent_id, "dep task")
+    item = await db.enqueue(agent_id, "blocked task", depends_on=[dep.id])
 
     await db.cancel_queue_item(dep.id)
 
@@ -355,8 +309,8 @@ async def test_dequeue_auto_fails_item_when_dep_cancelled(db):
 
 
 async def test_dequeue_auto_fails_item_when_dep_missing(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    item = await db.enqueue(agent.id, "blocked task", depends_on=["nonexistent-id"])
+    agent_id = "test-agent-1"
+    item = await db.enqueue(agent_id, "blocked task", depends_on=["nonexistent-id"])
 
     result = await db.dequeue_next()
     assert result is None
@@ -367,9 +321,9 @@ async def test_dequeue_auto_fails_item_when_dep_missing(db):
 
 
 async def test_list_queue_includes_depends_on(db):
-    agent = await db.register_agent(name="W", prompt="p", vendor="v")
-    dep = await db.enqueue(agent.id, "dep")
-    item = await db.enqueue(agent.id, "dependent", depends_on=[dep.id])
+    agent_id = "test-agent-1"
+    dep = await db.enqueue(agent_id, "dep")
+    item = await db.enqueue(agent_id, "dependent", depends_on=[dep.id])
 
     items = await db.list_queue()
     by_id = {i.id: i for i in items}

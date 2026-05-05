@@ -65,22 +65,18 @@ def _prompt_description(prompt: str) -> str:
     return ""
 
 
-async def _build_agent_nickname_map(db: OrchestratorDB) -> dict[str, str | None]:
-    """Return a mapping of agent_id -> nickname from both config and DB agents."""
+async def _build_agent_nickname_map() -> dict[str, str | None]:
+    """Return a mapping of agent_id -> nickname from config agents only."""
     settings = _get_settings()
-    result: dict[str, str | None] = {aid: a.nickname for aid, a in settings.agents.items()}
-    for agent in await db.list_agents():
-        result[agent.id] = agent.nickname
-    return result
+    return {aid: a.nickname for aid, a in settings.agents.items()}
 
 
-async def _get_agent_nickname(db: OrchestratorDB, agent_id: str) -> str | None:
-    """Return the nickname for a single agent, checking config then DB."""
+async def _get_agent_nickname(agent_id: str) -> str | None:
+    """Return the nickname for a single agent from config only."""
     settings = _get_settings()
     if agent_id in settings.agents:
         return settings.agents[agent_id].nickname
-    agent = await db.get_agent(agent_id)
-    return agent.nickname if agent else None
+    return None
 
 
 @mcp.tool()
@@ -95,11 +91,8 @@ async def list_agents(
     Returns id, name, vendor, workdir, and a description extracted from the agent's prompt.
     """
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        db_agents = await db.list_agents(vendor=vendor)
 
     results: list[dict] = []
-    seen_ids: set[str] = set()
 
     for agent_id, agent_settings in settings.agents.items():
         if vendor and agent_settings.vendor != vendor:
@@ -118,23 +111,6 @@ async def list_agents(
                 "workdir": agent_settings.workdir,
                 "description": _prompt_description(prompt_text),
                 "source": "config",
-            },
-        )
-        seen_ids.add(agent_id)
-
-    for agent in db_agents:
-        if agent.id in seen_ids:
-            continue
-        results.append(
-            {
-                "id": agent.id,
-                "name": agent.name,
-                "nickname": agent.nickname,
-                "vendor": agent.vendor,
-                "model": agent.model,
-                "workdir": agent.workdir,
-                "description": _prompt_description(agent.prompt),
-                "source": "database",
             },
         )
 
@@ -162,7 +138,7 @@ async def enqueue_task(
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         item = await db.enqueue(agent_id, prompt, depends_on=depends_on)
-        agent_nickname = await _get_agent_nickname(db, agent_id)
+        agent_nickname = await _get_agent_nickname(agent_id)
     return json.dumps(
         {
             "task_id": item.id,
@@ -279,7 +255,7 @@ async def list_tasks(
     settings = _get_settings()
     async with OrchestratorDB(settings.db_path) as db:
         items = await db.list_queue(status=status, agent_id=agent_id)
-        agent_nicknames = await _build_agent_nickname_map(db)
+        agent_nicknames = await _build_agent_nickname_map()
 
     results = []
     for item in items:
@@ -312,7 +288,7 @@ async def get_task(
         item = await db.get_queue_item(task_id)
         if not item:
             return json.dumps({"error": f"Task {task_id!r} not found"})
-        agent_nickname = await _get_agent_nickname(db, item.agent_id)
+        agent_nickname = await _get_agent_nickname(item.agent_id)
 
     return json.dumps(
         {

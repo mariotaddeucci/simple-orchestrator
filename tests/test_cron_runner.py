@@ -23,8 +23,8 @@ def _make_settings(*crons: CronSettings) -> OrchestratorSettings:
 
 
 async def test_first_run_enqueues_immediately(db):
-    agent = await db.register_agent(name="A", prompt="p", vendor="v")
-    cron_cfg = CronSettings(agent_id=agent.id, prompt="do stuff", cron="0 * * * *")
+    agent_id = "test-agent-A"
+    cron_cfg = CronSettings(agent_id=agent_id, prompt="do stuff", cron="0 * * * *")
     settings = _make_settings(cron_cfg)
 
     runner = CronRunner(db, settings=settings)
@@ -36,8 +36,8 @@ async def test_first_run_enqueues_immediately(db):
 
 
 async def test_skips_when_not_due(db):
-    agent = await db.register_agent(name="A", prompt="p", vendor="v")
-    cron_cfg = CronSettings(agent_id=agent.id, prompt="periodic task", cron="0 * * * *")
+    agent_id = "test-agent-A"
+    cron_cfg = CronSettings(agent_id=agent_id, prompt="periodic task", cron="0 * * * *")
     settings = _make_settings(cron_cfg)
     runner = CronRunner(db, settings=settings)
 
@@ -52,8 +52,8 @@ async def test_skips_when_not_due(db):
 
 
 async def test_enqueues_when_overdue(db):
-    agent = await db.register_agent(name="A", prompt="p", vendor="v")
-    cron_cfg = CronSettings(agent_id=agent.id, prompt="overdue task", cron="0 * * * *")
+    agent_id = "test-agent-A"
+    cron_cfg = CronSettings(agent_id=agent_id, prompt="overdue task", cron="0 * * * *")
     settings = _make_settings(cron_cfg)
     runner = CronRunner(db, settings=settings)
 
@@ -68,8 +68,8 @@ async def test_enqueues_when_overdue(db):
 
 
 async def test_skips_duplicate_pending(db):
-    agent = await db.register_agent(name="A", prompt="p", vendor="v")
-    cron_cfg = CronSettings(agent_id=agent.id, prompt="dup task", cron="0 * * * *")
+    agent_id = "test-agent-A"
+    cron_cfg = CronSettings(agent_id=agent_id, prompt="dup task", cron="0 * * * *")
     settings = _make_settings(cron_cfg)
     runner = CronRunner(db, settings=settings)
 

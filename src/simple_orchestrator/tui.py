@@ -638,15 +638,10 @@ class OrchestratorTUI(App[None]):
             log_panel.write(f"{ts_part}{level_part} {name_part}{message}")
 
     async def _merge_agents(self) -> list[AgentRecord]:
-        """Merge agents from settings and DB (settings take priority, matching QueueRunner behavior)."""
-        db_agents = await self._db.list_agents()
+        """Get agents from TOML settings only."""
         agents_map: dict[str, AgentRecord] = {}
 
-        # First add DB agents
-        for agent in db_agents:
-            agents_map[agent.id] = agent
-
-        # Then add/override with settings agents (TOML takes priority)
+        # Get agents from settings only
         for agent_id, agent_settings in self._settings.agents.items():
             agents_map[agent_id] = AgentRecord(
                 id=agent_id,

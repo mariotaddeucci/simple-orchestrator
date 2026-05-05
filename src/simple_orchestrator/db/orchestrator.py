@@ -11,7 +11,6 @@ import aiosqlite
 from ulid import ULID
 
 from simple_orchestrator.db.history import SessionHistoryDB
-from simple_orchestrator.models.agent_record import AgentRecord
 from simple_orchestrator.models.memory_record import MemoryRecord
 from simple_orchestrator.models.queue_item import QueueItem
 
@@ -51,17 +50,6 @@ class OrchestratorDB(SessionHistoryDB):
         await super()._init_schema()
         assert self._conn
         await self._conn.executescript("""
-            CREATE TABLE IF NOT EXISTS agents (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                nickname TEXT,
-                prompt TEXT NOT NULL,
-                model TEXT,
-                vendor TEXT NOT NULL,
-                workdir TEXT NOT NULL DEFAULT '.',
-                created_at TEXT NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS queue (
                 id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,
@@ -73,8 +61,7 @@ class OrchestratorDB(SessionHistoryDB):
                 started_at TEXT,
                 ended_at TEXT,
                 depends_on TEXT,
-                note TEXT,
-                FOREIGN KEY (agent_id) REFERENCES agents(id)
+                note TEXT
             );
 
             CREATE TABLE IF NOT EXISTS memory (
@@ -111,71 +98,6 @@ class OrchestratorDB(SessionHistoryDB):
         except sqlite3.OperationalError as exc:
             if "duplicate column name" not in str(exc):
                 raise
-
-    # ── agents ────────────────────────────────────────────────────────────────
-
-    async def register_agent(
-        self,
-        name: str,
-        prompt: str,
-        vendor: str,
-        workdir: str = ".",
-        model: str | None = None,
-        nickname: str | None = None,
-    ) -> AgentRecord:
-        assert self._conn
-        record = AgentRecord(
-            id=_new_ulid(),
-            name=name,
-            nickname=nickname,
-            prompt=prompt,
-            model=model,
-            vendor=vendor,
-            workdir=workdir,
-            created_at=datetime.now(UTC),
-        )
-        await self._conn.execute(
-            "INSERT INTO agents (id, name, nickname, prompt, model, vendor, workdir, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                record.id,
-                record.name,
-                record.nickname,
-                record.prompt,
-                record.model,
-                record.vendor,
-                record.workdir,
-                record.created_at.isoformat(),
-            ),
-        )
-        await self._conn.commit()
-        return record
-
-    async def get_agent(self, agent_id: str) -> AgentRecord | None:
-        assert self._conn
-        async with self._conn.execute(
-            "SELECT id, name, nickname, prompt, model, vendor, workdir, created_at FROM agents WHERE id = ?",
-            (agent_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
-        return _row_to_agent(row) if row else None
-
-    async def list_agents(self, vendor: str | None = None) -> list[AgentRecord]:
-        assert self._conn
-        query = "SELECT id, name, nickname, prompt, model, vendor, workdir, created_at FROM agents"
-        params: list[str] = []
-        if vendor:
-            query += " WHERE vendor = ?"
-            params.append(vendor)
-        query += " ORDER BY created_at DESC"
-        async with self._conn.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
-        return [_row_to_agent(r) for r in rows]
-
-    async def delete_agent(self, agent_id: str) -> None:
-        assert self._conn
-        await self._conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
-        await self._conn.commit()
 
     # ── queue ─────────────────────────────────────────────────────────────────
 
@@ -417,19 +339,6 @@ class OrchestratorDB(SessionHistoryDB):
         async with self._conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_memory(r) for r in rows]
-
-
-def _row_to_agent(row: aiosqlite.Row) -> AgentRecord:
-    return AgentRecord(
-        id=row[0],
-        name=row[1],
-        nickname=row[2],
-        prompt=row[3],
-        model=row[4],
-        vendor=row[5],
-        workdir=row[6],
-        created_at=datetime.fromisoformat(row[7]),
-    )
 
 
 def _row_to_queue(row: aiosqlite.Row) -> QueueItem:

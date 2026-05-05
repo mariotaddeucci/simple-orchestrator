@@ -69,15 +69,14 @@ Two classes, both wrap `aiosqlite`. Use as async context managers or call `conne
 
 **`SessionHistoryDB`** (`db/history.py`) — base class. Manages `sessions` table. Key methods: `save()`, `update_status()`, `get()`, `list_sessions()`. SQLite file defaults to `sessions.db` in cwd.
 
-**`OrchestratorDB`** (`db/orchestrator.py`) — extends `SessionHistoryDB`. Adds `agents` and `queue` tables. Extra methods: `register_agent()`, `get_agent()`, `list_agents()`, `delete_agent()`, `enqueue()`, `dequeue_next()`, `update_queue_item()`, `cancel_queue_item()`, `list_queue()`.
+**`OrchestratorDB`** (`db/orchestrator.py`) — extends `SessionHistoryDB`. Adds `queue`, `memory`, and `cron_state` tables. Extra methods: `enqueue()`, `dequeue_next()`, `update_queue_item()`, `cancel_queue_item()`, `list_queue()`, `save_memory()`, `get_memory()`, `delete_memory()`, `list_memories()`, `get_cron_last_run()`, `set_cron_last_run()`.
 
 ### Queue system (`queue_runner.py`)
 
 `QueueRunner` processes `QueueItem` rows with bounded parallelism and per-workdir serialisation.
 
-**Agent resolution order** (TOML wins):
-1. `settings.agents` (from `orchestrator.toml` — versionable, checked into git)
-2. `OrchestratorDB` agents table (programmatically registered at runtime)
+**Agent resolution:**
+- Agents are resolved from `settings.agents` (from `orchestrator.toml` — versionable, checked into git)
 
 **Concurrency rules:**
 - At most `settings.max_active_sessions` items run simultaneously (asyncio semaphore).
