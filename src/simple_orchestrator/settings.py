@@ -11,10 +11,12 @@ Configuration priority (highest to lowest):
 
 TOML structure example (orchestrator.toml or pyproject.toml)
 ─────────────────────────────────────────────────────────────
-db_path            = "orchestrator.db"
-logs_dir           = "logs"
-log_level          = "INFO"       # DEBUG | INFO | WARNING | ERROR | CRITICAL
-max_active_sessions = 4
+db_path                = "orchestrator.db"
+logs_dir               = "logs"
+log_level              = "INFO"       # DEBUG | INFO | WARNING | ERROR | CRITICAL
+max_active_sessions    = 4
+max_completed_items    = 15           # Maximum completed items to retain (default: 15)
+max_completed_age_days = 7            # Maximum age in days for completed items (default: 7)
 
 [mcp_servers.filesystem]
 type    = "stdio"

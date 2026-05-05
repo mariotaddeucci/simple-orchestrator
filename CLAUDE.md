@@ -69,7 +69,9 @@ Two classes, both wrap `aiosqlite`. Use as async context managers or call `conne
 
 **`SessionHistoryDB`** (`db/history.py`) — base class. Manages `sessions` table. Key methods: `save()`, `update_status()`, `get()`, `list_sessions()`. SQLite file defaults to `sessions.db` in cwd.
 
-**`OrchestratorDB`** (`db/orchestrator.py`) — extends `SessionHistoryDB`. Adds `queue`, `memory`, and `cron_state` tables. Extra methods: `enqueue()`, `dequeue_next()`, `update_queue_item()`, `cancel_queue_item()`, `list_queue()`, `save_memory()`, `get_memory()`, `delete_memory()`, `list_memories()`, `get_cron_last_run()`, `set_cron_last_run()`.
+**`OrchestratorDB`** (`db/orchestrator.py`) — extends `SessionHistoryDB`. Adds `queue`, `memory`, and `cron_state` tables. Extra methods: `enqueue()`, `dequeue_next()`, `update_queue_item()`, `cancel_queue_item()`, `list_queue()`, `cleanup_old_completed_items()`, `save_memory()`, `get_memory()`, `delete_memory()`, `list_memories()`, `get_cron_last_run()`, `set_cron_last_run()`.
+
+**Retention policy:** Completed queue items are automatically cleaned up when new items complete. The cleanup keeps at most `max_completed_items` (default: 15) most recent completed items and removes items older than `max_completed_age_days` (default: 7 days). Only applies to items with status='completed'.
 
 ### Queue system (`queue_runner.py`)
 
@@ -87,7 +89,7 @@ Lifecycle: `start()` / `stop()` for background polling loop. `run_until_empty()`
 
 ### Configuration (`settings.py`)
 
-`OrchestratorSettings` loads from `orchestrator.toml` (default), `pyproject.toml` under `[tool.simple-orchestrator]` section, or the path in `ORCHESTRATOR_TOML_FILE` env var. Key fields: `db_path`, `logs_dir`, `log_level`, `max_active_sessions`, `mcp_servers`, `skills`, `agents`.
+`OrchestratorSettings` loads from `orchestrator.toml` (default), `pyproject.toml` under `[tool.simple-orchestrator]` section, or the path in `ORCHESTRATOR_TOML_FILE` env var. Key fields: `db_path`, `logs_dir`, `log_level`, `max_active_sessions`, `max_completed_items`, `max_completed_age_days`, `mcp_servers`, `skills`, `agents`.
 
 **Configuration priority** (highest to lowest):
 1. `orchestrator.toml` (or path from `ORCHESTRATOR_TOML_FILE` env var)
