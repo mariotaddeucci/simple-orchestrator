@@ -45,7 +45,18 @@ uv sync --frozen
 
 ## Configuração rápida
 
-Toda a configuração fica no arquivo `orchestrator.toml` (commitável no repositório):
+A configuração pode ser feita de duas formas:
+
+1. **`orchestrator.toml`** (arquivo dedicado, commitável no repositório)
+2. **`pyproject.toml`** (seção `[tool.simple-orchestrator]` no arquivo do projeto Python)
+
+**Prioridade de configuração:**
+1. `orchestrator.toml` (ou caminho definido em `ORCHESTRATOR_TOML_FILE`)
+2. `pyproject.toml` (seção `[tool.simple-orchestrator]`)
+3. Variáveis de ambiente
+4. Valores padrão
+
+### Exemplo com `orchestrator.toml`:
 
 ```toml
 db_path             = "orchestrator.db"
@@ -76,10 +87,50 @@ workdir = "."
 prompt  = "Você é um revisor de código especialista. Analise as mudanças e liste problemas por: Bugs / Segurança / Performance / Estilo."
 ```
 
-Para usar um prompt em arquivo markdown:
+### Exemplo com `pyproject.toml`:
 
 ```toml
+[tool.simple-orchestrator]
+db_path             = "orchestrator.db"
+logs_dir            = "logs"
+log_level           = "INFO"
+max_active_sessions = 4
+
+mcp_server_host = "127.0.0.1"
+mcp_server_port = 8765
+
+[tool.simple-orchestrator.mcp_servers.filesystem]
+type    = "stdio"
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+[tool.simple-orchestrator.mcp_servers.orchestrator]
+type = "sse"
+url  = "http://127.0.0.1:8765/sse"
+
+[tool.simple-orchestrator.agents.reviewer]
+name    = "Code Reviewer"
+vendor  = "claude_code"
+model   = "claude-sonnet-4-6"
+workdir = "."
+prompt  = "Você é um revisor de código especialista. Analise as mudanças e liste problemas por: Bugs / Segurança / Performance / Estilo."
+```
+
+Para usar um prompt em arquivo markdown:
+
+**Em `orchestrator.toml`:**
+```toml
 [agents.auditor]
+name        = "Security Auditor"
+vendor      = "claude_code"
+model       = "claude-opus-4-7"
+workdir     = "."
+prompt_file = "prompts/security-auditor.md"
+```
+
+**Em `pyproject.toml`:**
+```toml
+[tool.simple-orchestrator.agents.auditor]
 name        = "Security Auditor"
 vendor      = "claude_code"
 model       = "claude-opus-4-7"
