@@ -5,7 +5,7 @@ import re
 import sqlite3
 import subprocess
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -288,6 +288,58 @@ class OrchestratorDB(SessionHistoryDB):
         async with self._conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_queue(r) for r in rows]
+
+    async def cleanup_old_completed_items(
+        self,
+        max_items: int = 15,
+        max_age_days: int = 7,
+    ) -> int:
+        """Remove completed items exceeding retention limits.
+
+        Keeps at most *max_items* completed items (newest first) and removes
+        completed items older than *max_age_days* days. Returns the number of
+        deleted items.
+
+        Only applies to items with status='completed'. Other statuses (pending,
+        running, failed, cancelled, killed) are not affected.
+        """
+        assert self._conn
+        now = datetime.now(UTC)
+        cutoff_date = now - timedelta(days=max_age_days)
+
+        # Get all completed items ordered by ended_at descending (newest first)
+        async with self._conn.execute(
+            "SELECT id, ended_at FROM queue WHERE status = 'completed' ORDER BY ended_at DESC",
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        # Convert to list for indexing
+        completed_items = list(rows)
+        to_delete: set[str] = set()
+
+        # Mark items beyond max_items limit for deletion
+        if len(completed_items) > max_items:
+            for row in completed_items[max_items:]:
+                to_delete.add(row[0])
+
+        # Mark items older than max_age_days for deletion
+        for row in completed_items:
+            if row[1]:  # ended_at is not None
+                ended_at = datetime.fromisoformat(row[1])
+                if ended_at < cutoff_date:
+                    to_delete.add(row[0])
+
+        # Delete items in batch
+        if to_delete:
+            placeholders = ",".join("?" * len(to_delete))
+            await self._conn.execute(
+                "DELETE FROM queue WHERE id IN (" + placeholders + ")",  # noqa: S608
+                list(to_delete),
+            )
+            await self._conn.commit()
+            logger.info("Cleaned up %d old completed queue items", len(to_delete))
+
+        return len(to_delete)
 
     # ── cron state ───────────────────────────────────────────────────────────
 

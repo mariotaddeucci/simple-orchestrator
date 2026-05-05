@@ -1,6 +1,6 @@
 """Integration tests for OrchestratorDB — queue, memory, cron state."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -99,8 +99,122 @@ async def test_list_queue_with_filters(db):
     pending = await db.list_queue(status="pending")
     assert len(pending) == 1
 
-    cancelled = await db.list_queue(status="cancelled")
-    assert len(cancelled) == 1
+
+async def test_cleanup_old_completed_items_by_count(db):
+    """Test that cleanup keeps only the most recent N completed items."""
+    agent_id = "test-agent-1"
+
+    # Create 20 completed items
+    for i in range(20):
+        item = await db.enqueue(agent_id, f"task {i}")
+        await db.update_queue_item(item.id, status="completed", ended_at=datetime.now(UTC))
+
+    # Cleanup should keep only 15 most recent
+    deleted = await db.cleanup_old_completed_items(max_items=15, max_age_days=365)
+    assert deleted == 5
+
+    # Verify only 15 items remain
+    completed = await db.list_queue(status="completed")
+    assert len(completed) == 15
+
+
+async def test_cleanup_old_completed_items_by_age(db):
+    """Test that cleanup removes items older than max_age_days."""
+    agent_id = "test-agent-1"
+    now = datetime.now(UTC)
+
+    # Create items with different ages
+    old_item = await db.enqueue(agent_id, "old task")
+    old_date = now - timedelta(days=10)
+    await db.update_queue_item(old_item.id, status="completed", ended_at=old_date)
+
+    recent_item = await db.enqueue(agent_id, "recent task")
+    await db.update_queue_item(recent_item.id, status="completed", ended_at=now)
+
+    # Cleanup items older than 7 days
+    deleted = await db.cleanup_old_completed_items(max_items=100, max_age_days=7)
+    assert deleted == 1
+
+    # Verify only recent item remains
+    completed = await db.list_queue(status="completed")
+    assert len(completed) == 1
+    assert completed[0].id == recent_item.id
+
+
+async def test_cleanup_respects_both_limits(db):
+    """Test that cleanup applies both count and age limits."""
+    agent_id = "test-agent-1"
+    now = datetime.now(UTC)
+
+    # Create 10 old items (> 7 days old)
+    for i in range(10):
+        item = await db.enqueue(agent_id, f"old task {i}")
+        old_date = now - timedelta(days=10)
+        await db.update_queue_item(item.id, status="completed", ended_at=old_date)
+
+    # Create 10 recent items
+    for i in range(10):
+        item = await db.enqueue(agent_id, f"recent task {i}")
+        await db.update_queue_item(item.id, status="completed", ended_at=now)
+
+    # Cleanup with max_items=15 and max_age_days=7
+    # Should delete all 10 old items (by age) and keep all 10 recent (within both limits)
+    deleted = await db.cleanup_old_completed_items(max_items=15, max_age_days=7)
+    assert deleted == 10
+
+    # Verify only recent items remain
+    completed = await db.list_queue(status="completed")
+    assert len(completed) == 10
+    assert all("recent" in item.prompt for item in completed)
+
+
+async def test_cleanup_only_affects_completed_status(db):
+    """Test that cleanup only removes completed items, not other statuses."""
+    agent_id = "test-agent-1"
+    now = datetime.now(UTC)
+    old_date = now - timedelta(days=10)
+
+    # Create items with various statuses, all old
+    completed_item = await db.enqueue(agent_id, "completed task")
+    await db.update_queue_item(completed_item.id, status="completed", ended_at=old_date)
+
+    failed_item = await db.enqueue(agent_id, "failed task")
+    await db.update_queue_item(failed_item.id, status="failed", ended_at=old_date)
+
+    cancelled_item = await db.enqueue(agent_id, "cancelled task")
+    await db.update_queue_item(cancelled_item.id, status="cancelled", ended_at=old_date)
+
+    # Also create a pending item (not marked as old since it's not ended)
+    await db.enqueue(agent_id, "pending task")
+
+    # Cleanup should only affect completed items
+    deleted = await db.cleanup_old_completed_items(max_items=0, max_age_days=7)
+    assert deleted == 1
+
+    # Verify other items still exist
+    all_items = await db.list_queue()
+    assert len(all_items) == 3
+    assert any(item.status == "failed" for item in all_items)
+    assert any(item.status == "cancelled" for item in all_items)
+    assert any(item.status == "pending" for item in all_items)
+
+
+async def test_cleanup_returns_zero_when_nothing_to_delete(db):
+    """Test that cleanup returns 0 when no items need deletion."""
+    agent_id = "test-agent-1"
+
+    # Create only 5 completed items
+    for i in range(5):
+        item = await db.enqueue(agent_id, f"task {i}")
+        await db.update_queue_item(item.id, status="completed", ended_at=datetime.now(UTC))
+
+    # Cleanup with limit of 15 should delete nothing
+    deleted = await db.cleanup_old_completed_items(max_items=15, max_age_days=7)
+    assert deleted == 0
+
+    # All items should still exist
+    completed = await db.list_queue(status="completed")
+    assert len(completed) == 5
 
 
 async def test_list_queue_by_agent(db):

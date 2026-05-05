@@ -171,6 +171,7 @@ class QueueRunner:
 
             await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
             logger.info("zombie %s [%s] → %s", item.id, info.label, queue_status)
+            await self._cleanup_if_completed(queue_status)
         finally:
             if tmp_skills_dir:
                 shutil.rmtree(tmp_skills_dir, ignore_errors=True)
@@ -242,6 +243,7 @@ class QueueRunner:
 
             await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
             logger.info("queue %s [%s] → %s", item.id, info.label, queue_status)
+            await self._cleanup_if_completed(queue_status)
         finally:
             if tmp_skills_dir:
                 shutil.rmtree(tmp_skills_dir, ignore_errors=True)
@@ -349,6 +351,19 @@ class QueueRunner:
         return None
 
     # ── helpers ───────────────────────────────────────────────────────────────
+
+    async def _cleanup_if_completed(self, queue_status: str) -> None:
+        """Cleanup old completed items if the current item completed successfully."""
+        if queue_status == "completed":
+            try:
+                deleted = await self._db.cleanup_old_completed_items(
+                    max_items=self._settings.max_completed_items,
+                    max_age_days=self._settings.max_completed_age_days,
+                )
+                if deleted > 0:
+                    logger.debug("Cleanup: removed %d old completed items", deleted)
+            except Exception:
+                logger.exception("Failed to cleanup old completed items")
 
     async def _await_session(
         self,

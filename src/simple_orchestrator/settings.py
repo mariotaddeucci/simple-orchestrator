@@ -195,6 +195,8 @@ class OrchestratorSettings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     max_active_sessions: int = Field(default=4, ge=1)
     task_timeout_minutes: float = Field(default=30.0, gt=0)
+    max_completed_items: int = Field(default=15, ge=1)
+    max_completed_age_days: int = Field(default=7, ge=1)
 
     mcp_server_host: str = "127.0.0.1"
     mcp_server_port: int = 8765
