@@ -18,7 +18,7 @@ from simple_orchestrator.models.queue_item import QueueItem
 from simple_orchestrator.models.session import SessionConfig, SessionRecord
 from simple_orchestrator.models.skill import SkillConfig
 from simple_orchestrator.queue_runner import QueueRunner, _AgentInfo
-from simple_orchestrator.settings import OrchestratorSettings
+from simple_orchestrator.settings import AgentSettings, OrchestratorSettings
 from simple_orchestrator.vendors.base import BaseVendor
 
 # 0.01 seconds expressed in minutes — used to trigger timeouts quickly in tests
@@ -66,14 +66,29 @@ async def orch_db(tmp_path):
 
 @pytest.fixture
 def settings():
-    return OrchestratorSettings(max_active_sessions=2)
+    # Create settings with test agents configured
+    test_agents = {
+        "test-agent-A": AgentSettings(
+            name="Agent A",
+            prompt="Test agent A prompt",
+            vendor="fake",
+            workdir=None,
+        ),
+        "test-agent-slow": AgentSettings(
+            name="Slow Agent",
+            prompt="Slow test agent",
+            vendor="fake",
+            workdir=None,
+        ),
+    }
+    return OrchestratorSettings(max_active_sessions=2, agents=test_agents)
 
 
 async def test_run_until_empty_completes_all_items(orch_db, settings):
     vendor = FakeVendor(orch_db)
-    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
-    await orch_db.enqueue(agent.id, "task one")
-    await orch_db.enqueue(agent.id, "task two")
+    agent_id = "test-agent-A"  # Use agent from settings fixture
+    await orch_db.enqueue(agent_id, "task one")
+    await orch_db.enqueue(agent_id, "task two")
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
     await runner.run_until_empty()
@@ -116,8 +131,8 @@ async def test_process_fails_when_agent_not_found(orch_db, settings):
 
 async def test_process_fails_when_vendor_not_registered(orch_db, settings):
     runner = QueueRunner(orch_db, {}, settings=settings)  # no vendors
-    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
-    item = await orch_db.enqueue(agent.id, "task")
+    agent_id = "test-agent-A"
+    item = await orch_db.enqueue(agent_id, "task")
     dequeued = await orch_db.dequeue_next()
     assert dequeued is not None
 
@@ -283,8 +298,8 @@ class SlowVendor(FakeVendor):
 async def test_process_times_out_and_marks_failed(orch_db):
     """A session that exceeds its timeout is killed and the queue item marked failed."""
     vendor = SlowVendor(orch_db)
-    agent = await orch_db.register_agent(name="Slow", prompt="p", vendor="fake")
-    item = await orch_db.enqueue(agent.id, "slow task")
+    agent_id = "test-agent-slow"
+    item = await orch_db.enqueue(agent_id, "slow task")
     dequeued = await orch_db.dequeue_next()
     assert dequeued is not None
 
@@ -312,8 +327,8 @@ async def test_process_times_out_and_marks_failed(orch_db):
 async def test_global_timeout_used_when_agent_has_none(orch_db):
     """When agent timeout_minutes is None, the global settings timeout is used."""
     vendor = SlowVendor(orch_db)
-    agent = await orch_db.register_agent(name="Slow2", prompt="p", vendor="fake")
-    item = await orch_db.enqueue(agent.id, "slow task 2")
+    agent_id = "test-agent-slow"
+    item = await orch_db.enqueue(agent_id, "slow task 2")
     dequeued = await orch_db.dequeue_next()
     assert dequeued is not None
 
@@ -357,11 +372,11 @@ class ResumingVendor(FakeVendor):
 async def test_resume_zombie_sessions_resumes_with_existing_session_id(orch_db, settings):
     """Items left in 'running' state are resumed using the saved session_id."""
     vendor = ResumingVendor(orch_db)
-    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+    agent_id = "test-agent-A"
 
     # Simulate a zombie: enqueue, dequeue (→running), link a session_id as if a
     # previous run had started the session but then crashed mid-execution.
-    item = await orch_db.enqueue(agent.id, "zombie task")
+    item = await orch_db.enqueue(agent_id, "zombie task")
     await orch_db.dequeue_next()  # transitions item to 'running'
     saved_session_id = str(ULID())
     await orch_db.update_queue_item(item.id, status="running", session_id=saved_session_id)
@@ -395,9 +410,9 @@ async def test_resume_zombie_sessions_resumes_with_existing_session_id(orch_db, 
 async def test_resume_zombie_sessions_runs_fresh_when_no_session_id(orch_db, settings):
     """Zombie items with no saved session_id get a brand-new session."""
     vendor = ResumingVendor(orch_db)
-    agent = await orch_db.register_agent(name="B", prompt="p", vendor="fake")
+    agent_id = "test-agent-A"
 
-    item = await orch_db.enqueue(agent.id, "no-session zombie")
+    item = await orch_db.enqueue(agent_id, "no-session zombie")
     await orch_db.dequeue_next()
     # Leave session_id as NULL — as if the crash happened before vendor.run() returned
 
@@ -438,9 +453,9 @@ async def test_resume_zombie_sessions_marks_failed_when_agent_missing(orch_db, s
 async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
     """start() calls resume_zombie_sessions before starting the polling loop."""
     vendor = ResumingVendor(orch_db)
-    agent = await orch_db.register_agent(name="C", prompt="p", vendor="fake")
+    agent_id = "test-agent-A"
 
-    item = await orch_db.enqueue(agent.id, "startup zombie")
+    item = await orch_db.enqueue(agent_id, "startup zombie")
     await orch_db.dequeue_next()
 
     saved_session_id = str(ULID())
@@ -471,10 +486,10 @@ async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
 async def test_run_until_empty_respects_depends_on(orch_db, settings):
     """Dependent task only runs after its dependency is completed."""
     vendor = FakeVendor(orch_db)
-    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+    agent_id = "test-agent-A"
 
-    dep = await orch_db.enqueue(agent.id, "first")
-    _item = await orch_db.enqueue(agent.id, "second", depends_on=[dep.id])
+    dep = await orch_db.enqueue(agent_id, "first")
+    _item = await orch_db.enqueue(agent_id, "second", depends_on=[dep.id])
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
     await runner.run_until_empty()
@@ -487,10 +502,10 @@ async def test_run_until_empty_respects_depends_on(orch_db, settings):
 async def test_run_until_empty_fails_dependent_when_dep_fails(orch_db, settings):
     """Dependent task is auto-failed when its dependency fails."""
     vendor = FakeVendor(orch_db, fail=True)
-    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+    agent_id = "test-agent-A"
 
-    dep = await orch_db.enqueue(agent.id, "first-fails")
-    item = await orch_db.enqueue(agent.id, "second-blocked", depends_on=[dep.id])
+    dep = await orch_db.enqueue(agent_id, "first-fails")
+    item = await orch_db.enqueue(agent_id, "second-blocked", depends_on=[dep.id])
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
     await runner.run_until_empty()
@@ -507,11 +522,11 @@ async def test_run_until_empty_fails_dependent_when_dep_fails(orch_db, settings)
 async def test_run_until_empty_chain_of_three(orch_db, settings):
     """A → B → C chain runs in order and all complete."""
     vendor = FakeVendor(orch_db)
-    agent = await orch_db.register_agent(name="A", prompt="p", vendor="fake")
+    agent_id = "test-agent-A"
 
-    a = await orch_db.enqueue(agent.id, "task-a")
-    b = await orch_db.enqueue(agent.id, "task-b", depends_on=[a.id])
-    c = await orch_db.enqueue(agent.id, "task-c", depends_on=[b.id])
+    a = await orch_db.enqueue(agent_id, "task-a")
+    b = await orch_db.enqueue(agent_id, "task-b", depends_on=[a.id])
+    c = await orch_db.enqueue(agent_id, "task-c", depends_on=[b.id])
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
     await runner.run_until_empty()
