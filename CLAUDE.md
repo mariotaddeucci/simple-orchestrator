@@ -108,3 +108,18 @@ Lifecycle: `start()` / `stop()` for background polling loop. `run_until_empty()`
 **OpenCodeVendor** — HTTP client (`AsyncOpencode`). Creates a vendor session via `session.create()`, stores returned `vendor_session_id` in DB. Kill calls `session.abort(vendor_session_id)`. Constructor takes `provider_id` and `model_id` (defaults: `"anthropic"`, `"claude-sonnet-4-5"`).
 
 **GithubCopilotVendor** — spawns CLI subprocess via `CopilotClient`. Session handle stored in `_active_handles` for abort. Kill calls `session.abort()` then `session.disconnect()` via context manager exit.
+
+### Prompts system
+
+**`prompts/__init__.py`** — Scans `prompts/` directory at repository root for `.md` files. Exposes three functions:
+- `list_prompt_names()` — returns list of available prompt identifiers (filename stems)
+- `get_prompt_content(name)` — reads and returns full prompt file content
+- `parse_prompt_metadata(content)` — extracts title (from first `# Header`) and description (first paragraph)
+
+**MCP integration** — `mcp_server.py` calls `_register_prompts()` at module load time, which:
+1. Lists all `.md` files in `prompts/` directory
+2. Parses each file to extract title and description
+3. Registers each as an MCP prompt using `@mcp.prompt()` decorator
+4. Prompts are accessible via MCP `list_prompts()` and `get_prompt(name)` methods
+
+Prompts are similar to skills but exposed as MCP prompts instead of skill files. Each prompt file should have a `# Title` header and descriptive content below it.

@@ -299,6 +299,52 @@ O servidor MCP expõe as seguintes ferramentas para os agentes:
 | `get_memory(memory_id)` | Recupera o conteúdo completo de uma memória. |
 | `delete_memory(memory_id)` | Remove uma memória pelo ID. |
 
+### Prompts (Slash Commands)
+
+O servidor MCP também expõe **prompts** do diretório `prompts/` como comandos reutilizáveis.
+
+| Tipo | Descrição |
+|---|---|
+| **Prompts dinâmicos** | Todos os arquivos `.md` em `prompts/` são automaticamente registrados como prompts MCP. |
+
+Cada arquivo segue este formato:
+
+```markdown
+# Nome do Prompt
+
+## Seção 1
+
+Conteúdo do prompt...
+```
+
+- **Nome**: Extraído do primeiro cabeçalho `# Título` ou do nome do arquivo
+- **Descrição**: Primeiro parágrafo após o título (máximo 200 caracteres)
+- **Conteúdo**: Todo o conteúdo do arquivo markdown
+
+**Exemplo de uso pelos agentes:**
+
+Os agentes podem listar e usar prompts via MCP:
+- `list_prompts()` — lista todos os prompts disponíveis
+- `get_prompt(name)` — retorna o conteúdo completo de um prompt
+
+**Prompt de exemplo** (`prompts/security-auditor.md`):
+
+```markdown
+# Security Auditor
+
+## Role
+
+You are a senior application security engineer specialising in code audits.
+Your goal is to identify security vulnerabilities before they reach production.
+
+## Scope
+
+- OWASP Top 10 vulnerabilities
+- Hardcoded secrets, tokens, or credentials
+- Insecure dependencies (known CVEs)
+...
+```
+
 ---
 
 ## Custom Tools
