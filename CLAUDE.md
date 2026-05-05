@@ -88,7 +88,13 @@ Lifecycle: `start()` / `stop()` for background polling loop. `run_until_empty()`
 
 ### Configuration (`settings.py`)
 
-`OrchestratorSettings` loads from `orchestrator.toml` (default) or the path in `ORCHESTRATOR_TOML_FILE` env var. Key fields: `db_path`, `logs_dir`, `log_level`, `max_active_sessions`, `mcp_servers`, `skills`, `agents`.
+`OrchestratorSettings` loads from `orchestrator.toml` (default), `pyproject.toml` under `[tool.simple-orchestrator]` section, or the path in `ORCHESTRATOR_TOML_FILE` env var. Key fields: `db_path`, `logs_dir`, `log_level`, `max_active_sessions`, `mcp_servers`, `skills`, `agents`.
+
+**Configuration priority** (highest to lowest):
+1. `orchestrator.toml` (or path from `ORCHESTRATOR_TOML_FILE` env var)
+2. `pyproject.toml` (section `[tool.simple-orchestrator]`)
+3. Environment variables
+4. Default values
 
 `AgentSettings` lives inside `[agents.<id>]` in the TOML. Prompt source: either inline `prompt = "..."` or `prompt_file = "path/to/prompt.md"` (exactly one required). `resolve_prompt()` reads from file if needed. Global `mcp_servers` and `skills` are merged with per-agent ones in `QueueRunner._build_session_config()`.
 

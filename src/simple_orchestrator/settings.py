@@ -1,9 +1,16 @@
 """
-OrchestratorSettings loads configuration from `orchestrator.toml` (default) or
-the path set in the `ORCHESTRATOR_TOML_FILE` env var.
+OrchestratorSettings loads configuration from `orchestrator.toml` (default),
+`pyproject.toml` under `[tool.simple-orchestrator]` section, or the path set
+in the `ORCHESTRATOR_TOML_FILE` env var.
 
-TOML structure example
-──────────────────────
+Configuration priority (highest to lowest):
+1. orchestrator.toml (or path from ORCHESTRATOR_TOML_FILE env var)
+2. pyproject.toml [tool.simple-orchestrator] section
+3. Environment variables
+4. Default values
+
+TOML structure example (orchestrator.toml or pyproject.toml)
+─────────────────────────────────────────────────────────────
 db_path            = "orchestrator.db"
 logs_dir           = "logs"
 log_level          = "INFO"       # DEBUG | INFO | WARNING | ERROR | CRITICAL
@@ -40,6 +47,13 @@ model       = "claude-opus-4-7"
 workdir     = "/workspace"
 prompt_file = "prompts/security-auditor.md"   # path to markdown file
 
+When using pyproject.toml, wrap settings in [tool.simple-orchestrator]:
+──────────────────────────────────────────────────────────────────────
+[tool.simple-orchestrator]
+db_path = "orchestrator.db"
+logs_dir = "logs"
+# ... rest of configuration ...
+
 Agent prompt markdown format (prompts/security-auditor.md)
 ──────────────────────────────────────────────────────────
 # Security Auditor
@@ -67,6 +81,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
+    PyprojectTomlConfigSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
@@ -172,6 +187,7 @@ class OrchestratorSettings(BaseSettings):
         env_file=".env",
         env_nested_delimiter="__",
         env_ignore_empty=True,
+        pyproject_toml_table_header=("tool", "simple-orchestrator"),
     )
 
     db_path: str = "orchestrator.db"
@@ -201,6 +217,10 @@ class OrchestratorSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Configure settings sources with priority:
+        orchestrator.toml > pyproject.toml > env > defaults
+        """
         sources: list[PydanticBaseSettingsSource] = [
             init_settings,
             env_settings,
@@ -209,6 +229,11 @@ class OrchestratorSettings(BaseSettings):
         toml_path = Path(os.environ.get(_TOML_FILE_ENV, "orchestrator.toml"))
         if toml_path.exists():
             sources.append(TomlConfigSettingsSource(settings_cls, toml_file=toml_path))
+
+        pyproject_path = Path("pyproject.toml")
+        if pyproject_path.exists():
+            sources.append(PyprojectTomlConfigSettingsSource(settings_cls, toml_file=pyproject_path))
+
         return tuple(sources)
 
 
