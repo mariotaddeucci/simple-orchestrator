@@ -99,7 +99,7 @@ Lifecycle: `start()` / `stop()` for background polling loop. `run_until_empty()`
 
 `AgentSettings` lives inside `[agents.<id>]` in the TOML. Prompt source: either inline `prompt = "..."` or `prompt_file = "path/to/prompt.md"` (exactly one required). `resolve_prompt()` reads from file if needed. Global `mcp_servers` and `skills` are merged with per-agent ones in `QueueRunner._build_session_config()`.
 
-`setup_logging()` configures daily-rotating file handler + stream handler; idempotent.
+`setup_logging()` configures daily-rotating file handler + optional stream handler (enabled by default, disabled for TUI); idempotent.
 
 ### Vendor-specific notes
 
