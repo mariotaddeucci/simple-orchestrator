@@ -273,3 +273,83 @@ async def test_tui_multiple_prompts_sequential(orch_db, settings, log_file, tmp_
     logger.info("  - Total prompts: %d", len(prompts))
     logger.info("  - All completed: ✓")
     logger.info("=" * 80)
+
+
+async def test_tui_manual_prompt_with_custom_workdir(orch_db, settings, log_file, tmp_path):
+    """
+    Test enqueueing a prompt with a custom workdir:
+    1. Enqueue prompt with custom workdir
+    2. Verify workdir is stored correctly
+    3. Enqueue prompt with None workdir
+    4. Verify None workdir creates a temp directory
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)-35s %(message)s",
+        handlers=[logging.StreamHandler(), logging.FileHandler(log_file)],
+    )
+
+    logger.info("=" * 80)
+    logger.info("TEST START: TUI manual prompt with custom workdir")
+    logger.info("=" * 80)
+
+    mock_vendor = MockAgent(orch_db, should_fail=False, delay_seconds=0.1)
+    vendors = {"mock": mock_vendor}
+
+    runner = QueueRunner(orch_db, vendors, settings=settings)
+
+    agent = AgentRecord(
+        id="mock-test-agent",
+        name="Mock Test Agent",
+        nickname="TestAgent",
+        prompt="You are a test agent",
+        model="mock-model-1",
+        vendor="mock",
+        workdir=str(tmp_path / "workdir"),
+        created_at=datetime.now(UTC),
+    )
+
+    # Step 1: Enqueue with custom workdir
+    logger.info("STEP 1: Enqueueing prompt with custom workdir")
+    custom_workdir = str(tmp_path / "custom_workdir")
+    (tmp_path / "custom_workdir").mkdir(exist_ok=True)
+    test_prompt_1 = "Task with custom workdir"
+    item1 = await orch_db.enqueue(agent_id=agent.id, prompt=test_prompt_1, workdir=custom_workdir)
+    logger.info("Item created with id=%s, workdir=%s", item1.id, item1.workdir)
+
+    # Verify workdir is stored correctly
+    assert item1.workdir == custom_workdir, f"Expected workdir {custom_workdir}, got {item1.workdir}"
+    logger.info("VERIFIED: Custom workdir stored correctly")
+
+    # Step 2: Enqueue with None workdir
+    logger.info("STEP 2: Enqueueing prompt with None workdir (should create temp dir)")
+    test_prompt_2 = "Task with temp workdir"
+    item2 = await orch_db.enqueue(agent_id=agent.id, prompt=test_prompt_2, workdir=None)
+    logger.info("Item created with id=%s, workdir=%s", item2.id, item2.workdir)
+
+    # Verify workdir is not None (should be resolved to temp dir)
+    assert item2.workdir is not None, "Workdir should be resolved to a temp directory"
+    assert "/tmp" in item2.workdir or "\\temp" in item2.workdir.lower(), f"Expected temp directory, got {item2.workdir}"
+    logger.info("VERIFIED: None workdir resolved to temp directory: %s", item2.workdir)
+
+    # Step 3: Process both items
+    logger.info("STEP 3: Processing both items")
+    await runner.run_until_empty()
+    await asyncio.sleep(0.5)
+
+    # Verify both completed
+    logger.info("STEP 4: Verifying both items completed")
+    completed_items = await orch_db.list_queue(status="completed")
+    assert len(completed_items) == 2, f"Expected 2 completed items, got {len(completed_items)}"
+    logger.info("VERIFIED: Both items completed successfully")
+
+    # Verify MockAgent executed both sessions
+    assert len(mock_vendor.executed_sessions) == 2, "MockAgent should have executed both sessions"
+    logger.info("VERIFIED: MockAgent executed both sessions")
+
+    logger.info("=" * 80)
+    logger.info("TEST PASSED: Custom workdir handling works correctly")
+    logger.info("  - Custom workdir: ✓")
+    logger.info("  - None workdir (temp dir): ✓")
+    logger.info("  - Both sessions completed: ✓")
+    logger.info("=" * 80)
