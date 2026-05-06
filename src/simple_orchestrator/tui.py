@@ -23,6 +23,7 @@ import asyncio
 import contextlib
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from croniter import croniter
@@ -30,7 +31,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Label, RichLog, Static, TextArea
+from textual.widgets import Button, DataTable, DirectoryTree, Footer, Header, Input, Label, RichLog, Static, TextArea
 
 from .cron_runner import CronRunner
 from .db.orchestrator import OrchestratorDB
@@ -42,8 +43,6 @@ from .settings import OrchestratorSettings, setup_logging
 from .vendors import ClaudeCodeVendor
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from textual.binding import BindingType
     from textual.widgets._data_table import ColumnKey
 
@@ -252,17 +251,81 @@ class AgentCard(Static):
         log = logging.getLogger(__name__)
         log.info("AgentCard clicked for agent: %s", self.agent.id)
 
-        async def handle_prompt(prompt: str | None) -> None:
-            log.info("handle_prompt callback invoked with prompt: %s", prompt[:50] if prompt else None)
-            if prompt and isinstance(self.app, OrchestratorTUI):
-                log.info("Calling enqueue_prompt for agent %s", self.agent.id)
-                await self.app.enqueue_prompt(self.agent, prompt)
+        async def handle_prompt(result: tuple[str, str | None] | None) -> None:
+            log.info("handle_prompt callback invoked with result: %s", result)
+            if result and isinstance(self.app, OrchestratorTUI):
+                prompt, workdir = result
+                log.info("Calling enqueue_prompt for agent %s with workdir %s", self.agent.id, workdir)
+                await self.app.enqueue_prompt(self.agent, prompt, workdir)
                 log.info("enqueue_prompt completed for agent %s", self.agent.id)
 
         await self.app.push_screen(PromptModal(self.agent), handle_prompt)
 
 
-class PromptModal(ModalScreen[str | None]):
+class DirectoryBrowser(ModalScreen[str | None]):
+    """Modal screen for browsing and selecting a directory."""
+
+    DEFAULT_CSS = """
+    DirectoryBrowser {
+        align: center middle;
+    }
+
+    #browser-dialog {
+        width: 70;
+        height: 30;
+        border: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #browser-dialog .dialog-title {
+        text-style: bold;
+        color: $text;
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    #directory-tree {
+        height: 1fr;
+        margin-bottom: 1;
+    }
+
+    #browser-button-container {
+        layout: horizontal;
+        height: 3;
+        align: center middle;
+    }
+
+    #browser-button-container Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, initial_path: str | None = None) -> None:
+        super().__init__()
+        self.initial_path = initial_path or str(Path.cwd())
+
+    def compose(self) -> ComposeResult:
+        with Container(id="browser-dialog"):
+            yield Label("Select Directory", classes="dialog-title")
+            yield DirectoryTree(self.initial_path, id="directory-tree")
+            with Horizontal(id="browser-button-container"):
+                yield Button("Select", variant="primary", id="select-button")
+                yield Button("Cancel", variant="default", id="cancel-button")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "select-button":
+            tree = self.query_one("#directory-tree", DirectoryTree)
+            if tree.cursor_node and tree.cursor_node.data:
+                selected_path = str(tree.cursor_node.data.path)
+                self.dismiss(selected_path)
+            else:
+                self.dismiss(self.initial_path)
+        elif event.button.id == "cancel-button":
+            self.dismiss(None)
+
+
+class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     """Modal screen for entering a prompt for an agent."""
 
     DEFAULT_CSS = """
@@ -272,7 +335,7 @@ class PromptModal(ModalScreen[str | None]):
 
     #prompt-dialog {
         width: 80;
-        height: 25;
+        height: 30;
         border: thick $accent;
         background: $surface;
         padding: 1 2;
@@ -286,7 +349,16 @@ class PromptModal(ModalScreen[str | None]):
     }
 
     #prompt-input {
-        height: 15;
+        height: 12;
+        margin-bottom: 1;
+    }
+
+    #workdir-label {
+        margin-bottom: 0;
+        margin-top: 1;
+    }
+
+    #workdir-input {
         margin-bottom: 1;
     }
 
@@ -310,7 +382,15 @@ class PromptModal(ModalScreen[str | None]):
             name = self.agent.nickname or self.agent.name
             yield Label(f"Enter prompt for: {name}", classes="dialog-title")
             yield TextArea(id="prompt-input", language="markdown")
+            yield Label("Working Directory (leave empty for default, enter 'null' for temp dir):", id="workdir-label")
+            workdir_value = self.agent.workdir or ""
+            yield Input(
+                value=workdir_value,
+                placeholder="Enter directory path or leave empty",
+                id="workdir-input",
+            )
             with Horizontal(id="button-container"):
+                yield Button("Browse...", variant="default", id="browse-button")
                 yield Button("OK", variant="primary", id="ok-button")
                 yield Button("Cancel", variant="default", id="cancel-button")
 
@@ -319,9 +399,37 @@ class PromptModal(ModalScreen[str | None]):
             text_area = self.query_one("#prompt-input", TextArea)
             prompt = text_area.text.strip()
             if prompt:
-                self.dismiss(prompt)
+                workdir_input = self.query_one("#workdir-input", Input)
+                workdir_value = workdir_input.value.strip()
+
+                # Process workdir: empty string or 'null' means None
+                workdir = None if not workdir_value or workdir_value.lower() == "null" else workdir_value
+
+                self.dismiss((prompt, workdir))
         elif event.button.id == "cancel-button":
             self.dismiss(None)
+        elif event.button.id == "browse-button":
+            self._browse_directory()
+
+    def _browse_directory(self) -> None:
+        """Open directory browser modal."""
+        workdir_input = self.query_one("#workdir-input", Input)
+        current_value = workdir_input.value.strip()
+
+        # Use current value as initial path if it's a valid directory
+        initial_path: str | None = None
+        if current_value and current_value.lower() != "null":
+            path = Path(current_value)
+            if path.is_dir():
+                initial_path = current_value
+            elif path.parent.is_dir():
+                initial_path = str(path.parent)
+
+        async def handle_selection(selected: str | None) -> None:
+            if selected:
+                workdir_input.value = selected
+
+        self.app.push_screen(DirectoryBrowser(initial_path), handle_selection)
 
 
 class QueueTable(DataTable):
@@ -572,12 +680,17 @@ class OrchestratorTUI(App[None]):
     async def _do_refresh(self) -> None:
         await self._load_data()
 
-    async def enqueue_prompt(self, agent: AgentRecord, prompt: str) -> None:
-        """Enqueue a new task for the given agent with the provided prompt."""
+    async def enqueue_prompt(self, agent: AgentRecord, prompt: str, workdir: str | None = None) -> None:
+        """Enqueue a new task for the given agent with the provided prompt and optional workdir."""
         log = logging.getLogger(__name__)
-        log.info("TUI enqueue_prompt: agent_id=%s, prompt=%s", agent.id, prompt[:50])
-        item = await self._db.enqueue(agent_id=agent.id, prompt=prompt)
-        log.info("TUI enqueue_prompt: item created with id=%s, status=%s", item.id, item.status)
+        log.info("TUI enqueue_prompt: agent_id=%s, prompt=%s, workdir=%s", agent.id, prompt[:50], workdir)
+        item = await self._db.enqueue(agent_id=agent.id, prompt=prompt, workdir=workdir)
+        log.info(
+            "TUI enqueue_prompt: item created with id=%s, status=%s, workdir=%s",
+            item.id,
+            item.status,
+            item.workdir,
+        )
         await self._load_data()
         log.info("TUI enqueue_prompt: data reloaded")
 
