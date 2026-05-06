@@ -755,7 +755,8 @@ class OrchestratorTUI(App[None]):
 async def run_tui() -> None:
     """Open the DB connection, start background processes, and launch the TUI."""
     settings = OrchestratorSettings()
-    setup_logging(settings)
+    # Disable console logging for TUI to avoid interfering with display
+    setup_logging(settings, enable_console=False)
     log_file = settings.logs_dir / "orchestrator.log"
 
     log = logging.getLogger(__name__)
