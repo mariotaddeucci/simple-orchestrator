@@ -241,10 +241,15 @@ class OrchestratorSettings(BaseSettings):
         return tuple(sources)
 
 
-def setup_logging(settings: OrchestratorSettings) -> None:
+def setup_logging(settings: OrchestratorSettings, *, enable_console: bool = True) -> None:
     """
-    Configure root logger with a daily-rotating file handler + stream handler.
+    Configure root logger with a daily-rotating file handler + optional stream handler.
     Subsequent calls are idempotent (handlers not added twice).
+
+    Args:
+        settings: Orchestrator settings
+        enable_console: If True, adds a StreamHandler to output logs to console.
+                       Set to False when running with TUI to avoid interfering with display.
     """
     level = logging.getLevelName(settings.log_level)
     logs_dir = settings.logs_dir
@@ -270,7 +275,7 @@ def setup_logging(settings: OrchestratorSettings) -> None:
         fh.setFormatter(fmt)
         root.addHandler(fh)
 
-    if not any(
+    if enable_console and not any(
         isinstance(h, logging.StreamHandler) and not isinstance(h, TimedRotatingFileHandler) for h in root.handlers
     ):
         sh = logging.StreamHandler()
