@@ -85,7 +85,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S", "PLR", "FBT", "DTZ", "ASYNC240"]
+"tests/**/*.py" = ["S", "PLR", "FBT", "DTZ", "ASYNC240", "PLC0415", "TC"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 7
@@ -98,6 +98,9 @@ skip-magic-trailing-comma = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require live external services (copilot, claude, opencode)",
+]
 
 [tool.pyrefly]
 project_includes = ["src"]

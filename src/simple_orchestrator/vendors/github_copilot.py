@@ -53,7 +53,7 @@ class GithubCopilotVendor(BaseVendor):
                     yield {"type": "session_created", "session_id": session.session_id}
                     events: list[Any] = []
                     session.on(events.append)
-                    await session.send(config.prompt)
+                    await session.send_and_wait(config.prompt)
                     for event in events:
                         yield {"type": "event", "data": event}
 
@@ -73,15 +73,7 @@ class GithubCopilotVendor(BaseVendor):
                     vendor_session_id=copilot_session.session_id,
                 )
                 self._active_handles[session_id] = copilot_session
-
-                done = False
-
-                def _on_done(_: Any) -> None:
-                    nonlocal done
-                    done = True
-
-                copilot_session.on(_on_done)
-                await copilot_session.send(config.prompt)
+                await copilot_session.send_and_wait(config.prompt)
                 self._active_handles.pop(session_id, None)
 
     async def _vendor_kill(self, session_id: str) -> None:

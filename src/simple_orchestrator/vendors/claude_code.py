@@ -10,6 +10,7 @@ from claude_agent_sdk.types import (
     McpSSEServerConfig,
     McpStdioServerConfig,
 )
+from ulid import ULID
 
 from simple_orchestrator.db.history import SessionHistoryDB
 from simple_orchestrator.models.agent import AgentConfig
@@ -46,7 +47,9 @@ class ClaudeCodeVendor(BaseVendor):
         return query(prompt=config.prompt, options=options)
 
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
-        options = self._build_options(config, session_id=session_id)
+        # Claude CLI requires UUID format; convert ULID to its UUID representation
+        claude_session_id = str(ULID.from_str(session_id).to_uuid())
+        options = self._build_options(config, session_id=claude_session_id)
         async for _ in query(prompt=config.prompt, options=options):
             pass
 
