@@ -1,17 +1,14 @@
 import contextlib
-from typing import TYPE_CHECKING, Any
+from collections.abc import AsyncIterator
+from typing import Any
 
 from opencode_ai import AsyncOpencode
 
+from simple_orchestrator.db.history import SessionHistoryDB
 from simple_orchestrator.logging_config import get_vendor_logger
 from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator.models.session import SessionConfig
 from simple_orchestrator.vendors.base import BaseVendor
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from simple_orchestrator.db.history import SessionHistoryDB
-    from simple_orchestrator.models.session import SessionConfig
 
 logger = get_vendor_logger(__name__)
 
@@ -28,7 +25,6 @@ class OpenCodeVendor(BaseVendor):
         self._base_url = base_url
         self._provider_id = provider_id
         self._model_id = model_id
-        self._active_handles: dict[str, tuple[AsyncOpencode, str]] = {}
 
     @property
     def vendor_name(self) -> str:
@@ -75,7 +71,7 @@ class OpenCodeVendor(BaseVendor):
         async with AsyncOpencode(base_url=self._base_url) as client:
             vendor_session = await client.session.create()
             logger.debug("OpenCode vendor session created vendor_session_id=%s", vendor_session.id)
-            self._db.update_status(session_id, "running", vendor_session_id=vendor_session.id)
+            await self._db.update_status(session_id, "running", vendor_session_id=vendor_session.id)
             self._active_handles[session_id] = (client, vendor_session.id)
 
             model_id = config.model or self._model_id

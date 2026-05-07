@@ -24,18 +24,18 @@ def _make_record(
 
 
 @pytest.fixture
-def db(tmp_path):
+async def db(tmp_path):
     db = SessionHistoryDB(tmp_path / "sessions.db")
-    db.connect()
+    await db.connect()
     yield db
-    db.close()
+    await db.close()
 
 
-def test_save_and_get(db):
+async def test_save_and_get(db):
     record = _make_record()
-    db.save(record)
+    await db.save(record)
 
-    fetched = db.get(record.id)
+    fetched = await db.get(record.id)
     assert fetched is not None
     assert fetched.id == record.id
     assert fetched.vendor == "test_vendor"
@@ -44,76 +44,76 @@ def test_save_and_get(db):
     assert fetched.ended_at is None
 
 
-def test_get_missing_returns_none(db):
-    result = db.get("nonexistent-id")
+async def test_get_missing_returns_none(db):
+    result = await db.get("nonexistent-id")
     assert result is None
 
 
-def test_update_status(db):
+async def test_update_status(db):
     record = _make_record()
-    db.save(record)
+    await db.save(record)
 
     ended = datetime(2024, 1, 1, 13, 0, 0, tzinfo=UTC)
-    db.update_status(record.id, "completed", ended_at=ended, vendor_session_id="vs-123")
+    await db.update_status(record.id, "completed", ended_at=ended, vendor_session_id="vs-123")
 
-    fetched = db.get(record.id)
+    fetched = await db.get(record.id)
     assert fetched is not None
     assert fetched.status == "completed"
     assert fetched.ended_at == ended
     assert fetched.vendor_session_id == "vs-123"
 
 
-def test_list_sessions_all(db):
+async def test_list_sessions_all(db):
     r1 = _make_record("01JTEST0000000000000000001", vendor="claude", status="running")
     r2 = _make_record("01JTEST0000000000000000002", vendor="openai", status="completed")
-    db.save(r1)
-    db.save(r2)
+    await db.save(r1)
+    await db.save(r2)
 
-    sessions = db.list_sessions()
+    sessions = await db.list_sessions()
     assert len(sessions) == 2
 
 
-def test_list_sessions_filtered_by_vendor(db):
+async def test_list_sessions_filtered_by_vendor(db):
     r1 = _make_record("01JTEST0000000000000000001", vendor="claude", status="running")
     r2 = _make_record("01JTEST0000000000000000002", vendor="openai", status="completed")
-    db.save(r1)
-    db.save(r2)
+    await db.save(r1)
+    await db.save(r2)
 
-    sessions = db.list_sessions(vendor="claude")
+    sessions = await db.list_sessions(vendor="claude")
     assert len(sessions) == 1
     assert sessions[0].vendor == "claude"
 
 
-def test_list_sessions_filtered_by_status(db):
+async def test_list_sessions_filtered_by_status(db):
     r1 = _make_record("01JTEST0000000000000000001", vendor="v1", status="running")
     r2 = _make_record("01JTEST0000000000000000002", vendor="v2", status="completed")
     r3 = _make_record("01JTEST0000000000000000003", vendor="v3", status="failed")
-    db.save(r1)
-    db.save(r2)
-    db.save(r3)
+    await db.save(r1)
+    await db.save(r2)
+    await db.save(r3)
 
-    running = db.list_sessions(status="running")
+    running = await db.list_sessions(status="running")
     assert len(running) == 1
     assert running[0].id == r1.id
 
 
-def test_context_manager(tmp_path):
-    with SessionHistoryDB(tmp_path / "ctx.db") as db:
+async def test_context_manager(tmp_path):
+    async with SessionHistoryDB(tmp_path / "ctx.db") as db:
         record = _make_record()
-        db.save(record)
-        fetched = db.get(record.id)
+        await db.save(record)
+        fetched = await db.get(record.id)
     assert fetched is not None
     assert fetched.id == record.id
 
 
-def test_update_status_preserves_vendor_session_id(db):
+async def test_update_status_preserves_vendor_session_id(db):
     """vendor_session_id set in first update must not be cleared by second update."""
     record = _make_record()
-    db.save(record)
-    db.update_status(record.id, "running", vendor_session_id="vs-abc")
+    await db.save(record)
+    await db.update_status(record.id, "running", vendor_session_id="vs-abc")
     # second update without vendor_session_id should keep existing value
-    db.update_status(record.id, "completed", ended_at=datetime(2024, 1, 2, tzinfo=UTC))
+    await db.update_status(record.id, "completed", ended_at=datetime(2024, 1, 2, tzinfo=UTC))
 
-    fetched = db.get(record.id)
+    fetched = await db.get(record.id)
     assert fetched is not None
     assert fetched.vendor_session_id == "vs-abc"
