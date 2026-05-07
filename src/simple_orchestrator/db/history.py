@@ -91,11 +91,12 @@ class SessionHistoryDB:
 
     def get(self, session_id: str) -> SessionRecord | None:
         assert self._conn
-        row = self._conn.execute(
-            "SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
-            "FROM sessions WHERE id = ?",
-            (session_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
+                "FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
         return _row_to_record(row) if row else None
 
     def list_sessions(
@@ -117,7 +118,8 @@ class SessionHistoryDB:
             "SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
             "FROM sessions " + where + " ORDER BY started_at DESC"
         )
-        rows = self._conn.execute(query, params).fetchall()
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
         return [_row_to_record(r) for r in rows]
 
 

@@ -149,11 +149,12 @@ class OrchestratorDB(SessionHistoryDB):
         Items whose dependencies have failed, been cancelled, or killed are automatically failed.
         """
         assert self._conn
-        rows = self._conn.execute(
-            "SELECT id, agent_id, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at, depends_on, note "
-            "FROM queue WHERE status = 'pending' ORDER BY id ASC",
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, agent_id, prompt, workdir, status, session_id, "
+                "created_at, started_at, ended_at, depends_on, note "
+                "FROM queue WHERE status = 'pending' ORDER BY id ASC",
+            ).fetchall()
 
         rows_list = list(rows)
         logger.debug("DB dequeue_next: found %d pending items", len(rows_list))
@@ -164,20 +165,27 @@ class OrchestratorDB(SessionHistoryDB):
                 # No dependencies — claim immediately.
                 logger.info("DB dequeue_next: claiming item id=%s agent_id=%s", item.id, item.agent_id)
                 with self._lock:
-                    self._conn.execute(
+                    cursor = self._conn.execute(
                         "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
                         (now, item.id),
                     )
                     self._conn.commit()
+                    if cursor.rowcount == 0:
+                        # Another thread/process claimed it — skip.
+                        logger.debug("DB dequeue_next: item id=%s was already claimed by another process", item.id)
+                        continue
                 logger.info("DB dequeue_next: claimed item id=%s, now running", item.id)
+                item.status = "running"
+                item.started_at = datetime.fromisoformat(now)
                 return item
 
             # Fetch statuses of all dependency tasks.
             placeholders = ",".join("?" * len(item.depends_on))
-            dep_rows = self._conn.execute(
-                "SELECT id, status FROM queue WHERE id IN (" + placeholders + ")",  # noqa: S608
-                item.depends_on,
-            ).fetchall()
+            with self._lock:
+                dep_rows = self._conn.execute(
+                    "SELECT id, status FROM queue WHERE id IN (" + placeholders + ")",  # noqa: S608
+                    item.depends_on,
+                ).fetchall()
 
             dep_statuses = {r[0]: r[1] for r in dep_rows}
 
@@ -197,11 +205,17 @@ class OrchestratorDB(SessionHistoryDB):
             # All dependencies must be 'completed' before we can start.
             if all(dep_statuses.get(did) == "completed" for did in item.depends_on):
                 with self._lock:
-                    self._conn.execute(
+                    cursor = self._conn.execute(
                         "UPDATE queue SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
                         (now, item.id),
                     )
                     self._conn.commit()
+                    if cursor.rowcount == 0:
+                        # Another thread/process claimed it — skip.
+                        logger.debug("DB dequeue_next: item id=%s was already claimed by another process", item.id)
+                        continue
+                item.status = "running"
+                item.started_at = datetime.fromisoformat(now)
                 return item
 
             # Some dependencies are still pending or running — skip for now.
@@ -251,20 +265,22 @@ class OrchestratorDB(SessionHistoryDB):
 
     def get_queue_item(self, item_id: str) -> QueueItem | None:
         assert self._conn
-        row = self._conn.execute(
-            "SELECT id, agent_id, prompt, workdir, status, session_id, "
-            "created_at, started_at, ended_at, depends_on, note FROM queue WHERE id = ?",
-            (item_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, agent_id, prompt, workdir, status, session_id, "
+                "created_at, started_at, ended_at, depends_on, note FROM queue WHERE id = ?",
+                (item_id,),
+            ).fetchone()
         return _row_to_queue(row) if row else None
 
     def has_duplicate_pending(self, agent_id: str, prompt: str) -> bool:
         """Return True if an identical (agent_id + prompt) item is pending or running."""
         assert self._conn
-        row = self._conn.execute(
-            "SELECT 1 FROM queue WHERE agent_id = ? AND prompt = ? AND status IN ('pending', 'running') LIMIT 1",
-            (agent_id, prompt),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM queue WHERE agent_id = ? AND prompt = ? AND status IN ('pending', 'running') LIMIT 1",
+                (agent_id, prompt),
+            ).fetchone()
         return row is not None
 
     def list_queue(
@@ -289,7 +305,8 @@ class OrchestratorDB(SessionHistoryDB):
         else:
             query = _cols + " ORDER BY id ASC"
             params = []
-        rows = self._conn.execute(query, params).fetchall()
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
         return [_row_to_queue(r) for r in rows]
 
     def cleanup_old_completed_items(
@@ -311,9 +328,10 @@ class OrchestratorDB(SessionHistoryDB):
         cutoff_date = now - timedelta(days=max_age_days)
 
         # Get all completed items ordered by ended_at descending (newest first)
-        rows = self._conn.execute(
-            "SELECT id, ended_at FROM queue WHERE status = 'completed' ORDER BY ended_at DESC",
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, ended_at FROM queue WHERE status = 'completed' ORDER BY ended_at DESC",
+            ).fetchall()
 
         # Convert to list for indexing
         completed_items = list(rows)
@@ -348,7 +366,8 @@ class OrchestratorDB(SessionHistoryDB):
 
     def get_cron_last_run(self, key: str) -> datetime | None:
         assert self._conn
-        row = self._conn.execute("SELECT last_run FROM cron_state WHERE key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT last_run FROM cron_state WHERE key = ?", (key,)).fetchone()
         return datetime.fromisoformat(row[0]) if row else None
 
     def set_cron_last_run(self, key: str, last_run: datetime) -> None:
@@ -377,15 +396,17 @@ class OrchestratorDB(SessionHistoryDB):
 
     def get_memory(self, memory_id: str) -> MemoryRecord | None:
         assert self._conn
-        row = self._conn.execute(
-            "SELECT id, agent_id, description, content, updated_at FROM memory WHERE id = ?",
-            (memory_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, agent_id, description, content, updated_at FROM memory WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
         return _row_to_memory(row) if row else None
 
     def delete_memory(self, memory_id: str) -> bool:
         assert self._conn
-        exists = self._conn.execute("SELECT 1 FROM memory WHERE id = ?", (memory_id,)).fetchone() is not None
+        with self._lock:
+            exists = self._conn.execute("SELECT 1 FROM memory WHERE id = ?", (memory_id,)).fetchone() is not None
         if exists:
             with self._lock:
                 self._conn.execute("DELETE FROM memory WHERE id = ?", (memory_id,))
@@ -400,7 +421,8 @@ class OrchestratorDB(SessionHistoryDB):
             query += " WHERE agent_id = ?"
             params.append(agent_id)
         query += " ORDER BY updated_at DESC"
-        rows = self._conn.execute(query, params).fetchall()
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
         return [_row_to_memory(r) for r in rows]
 
 

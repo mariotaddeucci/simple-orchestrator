@@ -205,9 +205,11 @@ def test_tui_manual_prompt_enqueue_with_failure(orch_db, settings, log_file, tmp
     logger.info("=" * 80)
 
 
-def test_tui_multiple_prompts_sequential(orch_db, settings, log_file, tmp_path):
+def test_tui_multiple_prompts_concurrent(orch_db, settings, log_file, tmp_path):
     """
-    Test adding multiple prompts and verify they are processed sequentially.
+    Test adding multiple prompts and verify they are all processed successfully.
+
+    Order of execution is not guaranteed since items may be processed concurrently.
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -216,7 +218,7 @@ def test_tui_multiple_prompts_sequential(orch_db, settings, log_file, tmp_path):
     )
 
     logger.info("=" * 80)
-    logger.info("TEST START: Multiple prompts sequential processing")
+    logger.info("TEST START: Multiple prompts concurrent processing")
     logger.info("=" * 80)
 
     mock_vendor = MockAgent(orch_db, should_fail=False, delay_seconds=0.0)
