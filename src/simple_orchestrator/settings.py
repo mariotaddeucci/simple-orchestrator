@@ -130,7 +130,7 @@ class CronSettings(BaseModel):
     cron: str
 
     @model_validator(mode="after")
-    def _validate_cron(self) -> "CronSettings":
+    def _validate_cron(self) -> CronSettings:
         if not croniter.is_valid(self.cron):
             raise ValueError(f"Invalid cron expression: {self.cron!r}")
         return self
@@ -161,7 +161,7 @@ class AgentSettings(BaseModel):
     skill_globs: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_prompt_source(self) -> "AgentSettings":
+    def _validate_prompt_source(self) -> AgentSettings:
         has_inline = bool(self.prompt)
         has_file = self.prompt_file is not None
         if not has_inline and not has_file:

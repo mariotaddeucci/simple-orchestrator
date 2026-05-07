@@ -1,16 +1,20 @@
 import contextlib
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from copilot.client import CopilotClient
-from copilot.generated.session_events import PermissionRequest
 from copilot.session import CopilotSession, PermissionRequestResult
 
-from simple_orchestrator.db.history import SessionHistoryDB
 from simple_orchestrator.logging_config import get_vendor_logger
 from simple_orchestrator.models.model import ModelInfo
-from simple_orchestrator.models.session import SessionConfig
 from simple_orchestrator.vendors.base import BaseVendor
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from copilot.generated.session_events import PermissionRequest
+
+    from simple_orchestrator.db.history import SessionHistoryDB
+    from simple_orchestrator.models.session import SessionConfig
 
 logger = get_vendor_logger(__name__)
 
@@ -27,6 +31,7 @@ class GithubCopilotVendor(BaseVendor):
     ) -> None:
         super().__init__(db)
         self._model = model
+        self._active_handles: dict[str, CopilotSession] = {}
 
     @property
     def vendor_name(self) -> str:
@@ -73,7 +78,7 @@ class GithubCopilotVendor(BaseVendor):
             )
             async with copilot_session:
                 logger.debug("GitHub Copilot vendor session created vendor_session_id=%s", copilot_session.session_id)
-                await self._db.update_status(
+                self._db.update_status(
                     session_id,
                     "running",
                     vendor_session_id=copilot_session.session_id,

@@ -6,9 +6,9 @@ readme = "README.md"
 authors = [
     { name = "Mario Taddeucci", email = "mariotaddeucci@gmx.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "aiosqlite>=0.22.1",
+    "anyio>=4.7.0",
     "claude-agent-sdk>=0.1.72",
     "github-copilot-sdk>=0.3.0",
     "opencode-ai>=0.1.0a36",
@@ -18,6 +18,7 @@ dependencies = [
     "python-ulid>=3.1.0",
     "croniter>=6.2.2",
     "textual>=3.0.0",
+    "sqlmodel>=0.0.38",
 ]
 
 [project.scripts]
@@ -25,10 +26,10 @@ simple-orchestrator = "simple_orchestrator:main"
 
 [dependency-groups]
 dev = [
+    "anyio[trio]>=4.7.0",
     "prek>=0.3.11",
     "pyrefly>=0.63.1",
     "pytest>=9.0.3",
-    "pytest-asyncio>=1.3.0",
     "ruff>=0.15.12",
 ]
 
@@ -38,7 +39,7 @@ build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
@@ -82,6 +83,7 @@ ignore = [
     "TD002",  # missing author in TODO
     "TD003",  # missing issue link in TODO
     "TRY003", # long messages outside exception class (acceptable in validators)
+    "TC001", "TC002", "TC003",  # type-checking imports break pydantic runtime resolution
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -96,7 +98,6 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-m 'not integration'"
 markers = [
