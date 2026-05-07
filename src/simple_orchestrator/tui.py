@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from croniter import croniter
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -40,7 +41,6 @@ from textual.widgets import (
     Input,
     Label,
     OptionList,
-    Select,
     SelectionList,
     Static,
     TextArea,
@@ -683,6 +683,86 @@ class QueueTable(DataTable):
                 )
 
 
+class LogLevelModal(ModalScreen[str | None]):
+    """Modal screen for selecting log level."""
+
+    DEFAULT_CSS = """
+    LogLevelModal {
+        align: center middle;
+    }
+
+    #log-level-dialog {
+        width: 40;
+        height: 20;
+        border: round #bd93f9;
+        background: #282a36;
+        padding: 2;
+    }
+
+    #log-level-dialog .dialog-title {
+        text-style: bold;
+        color: #ff79c6;
+        text-align: center;
+        margin-bottom: 2;
+        height: 3;
+    }
+
+    #level-list {
+        height: 1fr;
+        background: #44475a;
+        border: round #6272a4;
+    }
+
+    OptionList {
+        background: #44475a;
+    }
+
+    OptionList > .option-list--option {
+        color: #f8f8f2;
+        padding: 1 2;
+    }
+
+    OptionList > .option-list--option-highlighted {
+        background: #6272a4;
+        color: #50fa7b;
+    }
+    """
+
+    def __init__(self, current_level: str = "INFO") -> None:
+        super().__init__()
+        self.current_level = current_level
+
+    def compose(self) -> ComposeResult:
+        with Container(id="log-level-dialog"):
+            yield Label("📋  Select Log Level", classes="dialog-title")
+            yield OptionList(
+                *[Option(f"{'✓ ' if level == self.current_level else '  '}{level}", id=level) for level in _LOG_LEVELS],
+                id="level-list",
+            )
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option_id)
+
+
+class ClickableLabel(Label):
+    """A label that can be clicked."""
+
+    class Clicked(Message):
+        """Label clicked message."""
+
+        def __init__(self, label: ClickableLabel) -> None:
+            super().__init__()
+            self.label = label
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.can_focus = True
+
+    def on_click(self) -> None:
+        """Handle click event."""
+        self.post_message(self.Clicked(self))
+
+
 class OrchestratorTUI(App[None]):
     """Textual TUI that displays the Simple Orchestrator queue."""
 
@@ -827,14 +907,18 @@ class OrchestratorTUI(App[None]):
         align: right middle;
     }
 
-    #log-level-selector {
-        width: 20;
-        height: 3;
-    }
-
-    #log-level-selector Select {
+    #log-level-value {
+        width: auto;
+        color: #50fa7b;
+        text-style: bold;
         background: #44475a;
         border: round #6272a4;
+        padding: 0 2;
+    }
+
+    #log-level-value:hover {
+        background: #6272a4;
+        text-style: bold underline;
     }
 
     #log-display {
@@ -942,12 +1026,7 @@ class OrchestratorTUI(App[None]):
                 with Horizontal(id="log-header"):
                     yield Label("📋  LOGS", classes="section-label logs", id="log-title")
                     yield Label("Level:", id="log-level-label")
-                    yield Select(
-                        [(level, level) for level in _LOG_LEVELS],
-                        value="INFO",
-                        id="log-level-selector",
-                        allow_blank=False,
-                    )
+                    yield ClickableLabel("INFO", id="log-level-value")
                 yield DataTable(id="log-display", show_cursor=False, zebra_stripes=True)
 
         yield Footer()
@@ -1020,12 +1099,20 @@ class OrchestratorTUI(App[None]):
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-    def on_select_changed(self, event: Select.Changed) -> None:
-        """Handle log level selection."""
-        if event.select.id == "log-level-selector":
-            level = str(event.value)
-            self._selected_log_level = level
-            self._refresh_log_panel()
+    def on_clickable_label_clicked(self, event: ClickableLabel.Clicked) -> None:
+        """Handle clickable label click."""
+        if event.label.id == "log-level-value":
+            # Open log level modal
+            def handle_level_selection(level: str | None) -> None:
+                if level:
+                    self._selected_log_level = level
+                    # Update the label text
+                    level_label = self.query_one("#log-level-value", ClickableLabel)
+                    level_label.update(level)
+                    self._refresh_log_panel()
+
+            modal = LogLevelModal(self._selected_log_level)
+            self.push_screen(modal, handle_level_selection)
 
     async def _do_refresh(self) -> None:
         await self._load_data()
