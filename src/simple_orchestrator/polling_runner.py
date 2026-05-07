@@ -1,10 +1,10 @@
 import asyncio
-import logging
 
 from .db.orchestrator import OrchestratorDB
+from .logging_config import get_internal_logger
 from .settings import PollingSettings
 
-logger = logging.getLogger(__name__)
+logger = get_internal_logger(__name__)
 
 
 class PollingRunner:

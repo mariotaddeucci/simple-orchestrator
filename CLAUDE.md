@@ -111,7 +111,27 @@ Lifecycle: `start()` / `stop()` for background polling loop. `run_until_empty()`
 
 `AgentSettings` lives inside `[agents.<id>]` in the TOML. Prompt source: either inline `prompt = "..."` or `prompt_file = "path/to/prompt.md"` (exactly one required). `resolve_prompt()` reads from file if needed. Global `mcp_servers` and `skills` are merged with per-agent ones in `QueueRunner._build_session_config()`.
 
-`setup_logging()` configures daily-rotating file handler + optional stream handler (enabled by default, disabled for TUI); idempotent.
+### Logging (`logging_config.py`)
+
+**Dual logging streams** — logs are separated into two files for better debugging:
+- `logs/orchestrator.log` — Internal orchestrator operations (queue, cron, polling, database)
+- `logs/vendor.log` — Vendor session execution and agent interactions
+
+**Usage:**
+- Import `get_internal_logger(__name__)` for orchestrator/queue/db operations
+- Import `get_vendor_logger(__name__)` for vendor/agent execution operations
+- Use `setup_logging(logs_dir, log_level, enable_console=True)` to configure logging
+
+**DEBUG mode enhancements:**
+- When `log_level="DEBUG"`, logs include caller file and line number: `[filename.py:123]`
+- Format: `%(asctime)s %(levelname)-8s %(name)-35s [%(caller_info)s] %(message)s`
+- This provides tracing to identify which file/line generated each log entry
+
+**Key logging points:**
+- Queue operations: dequeue, dispatch, lock acquisition/release
+- Vendor sessions: start, config, completion, failures
+- Agent resolution and workdir determination
+- Database operations: enqueue, status updates
 
 ### Vendor-specific notes
 

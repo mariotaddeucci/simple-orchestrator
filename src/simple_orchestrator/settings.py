@@ -72,9 +72,7 @@ You are a security expert…
 Return findings as a markdown list grouped by severity.
 """
 
-import logging
 import os
-from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -239,48 +237,3 @@ class OrchestratorSettings(BaseSettings):
             sources.append(PyprojectTomlConfigSettingsSource(settings_cls, toml_file=pyproject_path))
 
         return tuple(sources)
-
-
-def setup_logging(settings: OrchestratorSettings, *, enable_console: bool = True) -> None:
-    """
-    Configure root logger with a daily-rotating file handler + optional stream handler.
-    Subsequent calls are idempotent (handlers not added twice).
-
-    Args:
-        settings: Orchestrator settings
-        enable_console: If True, adds a StreamHandler to output logs to console.
-                       Set to False when running with TUI to avoid interfering with display.
-    """
-    level = logging.getLevelName(settings.log_level)
-    logs_dir = settings.logs_dir
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    fmt = logging.Formatter(
-        fmt="%(asctime)s %(levelname)-8s %(name)-35s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-    )
-
-    root = logging.getLogger()
-    # Skip if handlers already configured at this level
-    existing_files = {h.baseFilename for h in root.handlers if isinstance(h, TimedRotatingFileHandler)}
-    log_file = logs_dir / "orchestrator.log"
-    if str(log_file.resolve()) not in existing_files:
-        fh = TimedRotatingFileHandler(
-            log_file,
-            when="midnight",
-            backupCount=7,
-            encoding="utf-8",
-        )
-        fh.setLevel(level)
-        fh.setFormatter(fmt)
-        root.addHandler(fh)
-
-    if enable_console and not any(
-        isinstance(h, logging.StreamHandler) and not isinstance(h, TimedRotatingFileHandler) for h in root.handlers
-    ):
-        sh = logging.StreamHandler()
-        sh.setLevel(level)
-        sh.setFormatter(fmt)
-        root.addHandler(sh)
-
-    root.setLevel(level)

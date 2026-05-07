@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import fnmatch
-import logging
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -9,13 +8,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .db.orchestrator import OrchestratorDB
+from .logging_config import get_internal_logger
 from .models.queue_item import QueueItem
 from .models.session import SessionConfig
 from .models.skill import SkillConfig
 from .settings import AgentSettings, OrchestratorSettings
 from .vendors.base import BaseVendor
 
-logger = logging.getLogger(__name__)
+logger = get_internal_logger(__name__)
 
 
 @dataclass
@@ -180,30 +180,37 @@ class QueueRunner:
 
     async def _loop(self) -> None:
         while self._running:
+            logger.debug("QueueRunner polling for pending items")
             await self._semaphore.acquire()
             item = await self._db.dequeue_next()
             if item:
                 logger.info("QueueRunner: dequeued item id=%s agent_id=%s", item.id, item.agent_id)
+                logger.debug("Creating dispatch task for item id=%s", item.id)
                 task = asyncio.create_task(self._dispatch(item))
                 self._dispatch_tasks.add(task)
                 task.add_done_callback(self._dispatch_tasks.discard)
             else:
                 self._semaphore.release()
+                logger.debug("No pending items, sleeping for %.1fs", self._poll_interval)
                 await asyncio.sleep(self._poll_interval)
 
     async def _dispatch(self, item: QueueItem) -> None:
         logger.info("QueueRunner._dispatch: starting item id=%s agent_id=%s", item.id, item.agent_id)
+        logger.debug("Resolving agent info for agent_id=%s", item.agent_id)
         info = await self._resolve_agent(item.agent_id)
         # Determine the effective workdir for serialisation: item overrides agent.
         # If neither specifies one, use item.id as a unique key so the task never
         # blocks other tasks (each temp-dir session is independent).
         workdir = item.workdir or (info.workdir if info else None) or item.id
+        logger.debug("Effective workdir for item id=%s: %s", item.id, workdir)
         try:
+            logger.debug("Waiting for workdir lock: %s", workdir)
             async with self._workdir_lock(workdir):
                 logger.info("QueueRunner._dispatch: acquired lock for workdir=%s item id=%s", workdir, item.id)
                 await self._process(item, info)
         finally:
             logger.info("QueueRunner._dispatch: released lock for workdir=%s item id=%s", workdir, item.id)
+            logger.debug("Releasing semaphore slot")
             self._semaphore.release()
 
     # ── execution ─────────────────────────────────────────────────────────────

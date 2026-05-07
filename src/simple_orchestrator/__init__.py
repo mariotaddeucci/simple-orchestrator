@@ -1,9 +1,9 @@
 import argparse
 import asyncio
-import logging
 
 from .cron_runner import CronRunner
 from .db import OrchestratorDB, SessionHistoryDB
+from .logging_config import get_internal_logger, setup_logging
 from .mcp_server import serve, serve_sse_async
 from .models import (
     AgentConfig,
@@ -20,7 +20,7 @@ from .models import (
 )
 from .polling_runner import PollingRunner
 from .queue_runner import QueueRunner
-from .settings import AgentSettings, OrchestratorSettings, setup_logging
+from .settings import AgentSettings, OrchestratorSettings
 from .skills import get_skill_path, list_skill_names
 from .tui import run_tui
 from .vendors import BaseVendor, ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
@@ -89,14 +89,14 @@ def main() -> None:
 
 async def _start() -> None:
     settings = OrchestratorSettings()
-    setup_logging(settings)
+    setup_logging(settings.logs_dir, settings.log_level)
 
     async with OrchestratorDB(settings.db_path) as db:
         vendors: dict = {"claude_code": ClaudeCodeVendor(db)}
         runner = QueueRunner(db, vendors, settings)
         poller = PollingRunner(db, settings.pollings)
 
-        log = logging.getLogger(__name__)
+        log = get_internal_logger(__name__)
         log.info(
             "Starting orchestrator — MCP SSE at http://%s:%d/sse",
             settings.mcp_server_host,

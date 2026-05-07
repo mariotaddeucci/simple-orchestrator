@@ -13,12 +13,15 @@ from claude_agent_sdk.types import (
 from ulid import ULID
 
 from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.logging_config import get_vendor_logger
 from simple_orchestrator.models.agent import AgentConfig
 from simple_orchestrator.models.mcp import McpConfig, McpHttpConfig, McpLocalConfig, McpSseConfig, McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.session import SessionConfig
 from simple_orchestrator.models.skill import SkillConfig
 from simple_orchestrator.vendors.base import BaseVendor
+
+logger = get_vendor_logger(__name__)
 
 _CLAUDE_MODELS = [
     ModelInfo(id="claude-opus-4-7", name="Claude Opus 4.7", vendor="claude_code"),
@@ -49,9 +52,18 @@ class ClaudeCodeVendor(BaseVendor):
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
         # Claude CLI requires UUID format; convert ULID to its UUID representation
         claude_session_id = str(ULID.from_str(session_id).to_uuid())
+        logger.info("Claude Code: starting session session_id=%s claude_session_id=%s", session_id, claude_session_id)
+        logger.debug(
+            "Claude Code config: model=%s workdir=%s mcp_servers=%d skills=%d",
+            config.model,
+            config.workdir,
+            len(config.mcp_servers),
+            len(config.skills),
+        )
         options = self._build_options(config, session_id=claude_session_id)
         async for _ in query(prompt=config.prompt, options=options):
             pass
+        logger.info("Claude Code: session completed session_id=%s", session_id)
 
     async def _vendor_kill(self, session_id: str) -> None:
         pass
