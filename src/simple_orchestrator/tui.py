@@ -31,7 +31,21 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, DirectoryTree, Footer, Header, Input, Label, RichLog, Static, TextArea
+from textual.widgets import (
+    Button,
+    DataTable,
+    DirectoryTree,
+    Footer,
+    Header,
+    Input,
+    Label,
+    OptionList,
+    SelectionList,
+    Static,
+    TextArea,
+)
+from textual.widgets.option_list import Option
+from textual.widgets.selection_list import Selection
 
 from .cron_runner import CronRunner
 from .db.orchestrator import OrchestratorDB
@@ -52,6 +66,7 @@ if TYPE_CHECKING:
 _REFRESH_INTERVAL = 2.0  # seconds
 _FINISHED_LIMIT = 20  # how many recent finished items to display
 _LOG_DISPLAY_LINES = 100  # max lines shown in the log panel
+_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 _STATUS_STYLE: dict[str, str] = {
     "pending": "#f1fa8c",  # Dracula yellow
@@ -252,15 +267,19 @@ class AgentCard(Static):
         log = logging.getLogger(__name__)
         log.info("AgentCard clicked for agent: %s", self.agent.id)
 
-        async def handle_prompt(result: tuple[str, str | None] | None) -> None:
+        # Get all agents from the app
+        agents = self.app._agents if isinstance(self.app, OrchestratorTUI) else []
+
+        async def handle_prompt(result: tuple[str, str | None, str | None] | None) -> None:
             log.info("handle_prompt callback invoked with result: %s", result)
             if result and isinstance(self.app, OrchestratorTUI):
-                prompt, workdir = result
+                prompt, workdir, _agent_id = result
+                # agent_id should be None since agent is pre-selected
                 log.info("Calling enqueue_prompt for agent %s with workdir %s", self.agent.id, workdir)
                 await self.app.enqueue_prompt(self.agent, prompt, workdir)
                 log.info("enqueue_prompt completed for agent %s", self.agent.id)
 
-        await self.app.push_screen(PromptModal(self.agent), handle_prompt)
+        await self.app.push_screen(PromptModal(self.agent, agents), handle_prompt)
 
 
 class DirectoryBrowser(ModalScreen[str | None]):
@@ -330,8 +349,73 @@ class DirectoryBrowser(ModalScreen[str | None]):
             self.dismiss(None)
 
 
-class PromptModal(ModalScreen[tuple[str, str | None] | None]):
-    """Modal screen for entering a prompt for an agent."""
+class CommandPalette(ModalScreen[str | None]):
+    """Command palette modal for quick actions (Ctrl+P)."""
+
+    DEFAULT_CSS = """
+    CommandPalette {
+        align: center middle;
+    }
+
+    #command-dialog {
+        width: 70;
+        height: 30;
+        border: round #bd93f9;
+        background: #282a36;
+        padding: 2;
+    }
+
+    #command-dialog .dialog-title {
+        text-style: bold;
+        color: #ff79c6;
+        text-align: center;
+        margin-bottom: 2;
+        height: 3;
+    }
+
+    #command-list {
+        height: 1fr;
+        background: #44475a;
+        border: round #6272a4;
+    }
+
+    OptionList {
+        background: #44475a;
+    }
+
+    OptionList > .option-list--option {
+        color: #f8f8f2;
+        padding: 1 2;
+    }
+
+    OptionList > .option-list--option-highlighted {
+        background: #6272a4;
+        color: #50fa7b;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id="command-dialog"):
+            yield Label("⚡ Command Palette", classes="dialog-title")
+            yield OptionList(
+                Option("📝 Delegate Task to Agent", id="delegate-task"),
+                Option("🔄 Refresh View", id="refresh"),
+                Option("📊 View Queue Stats", id="queue-stats"),
+                Option("⚙️  Open Settings", id="settings"),
+                Option("❌ Close Palette", id="close"),
+                id="command-list",
+            )
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option_id)
+
+
+class PromptModal(ModalScreen[tuple[str, str | None, str | None] | None]):
+    """Modal screen for entering a prompt for an agent.
+
+    Returns: (prompt, workdir, agent_id) or None if cancelled.
+    If agent is pre-selected, agent_id will be None (use the pre-selected agent).
+    """
 
     DEFAULT_CSS = """
     PromptModal {
@@ -340,7 +424,7 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
 
     #prompt-dialog {
         width: 90;
-        height: 40;
+        height: 45;
         border: round #bd93f9;
         background: #282a36;
         padding: 2;
@@ -354,8 +438,21 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
         height: 3;
     }
 
+    #agent-label {
+        margin-bottom: 1;
+        color: #f8f8f2;
+        height: 2;
+    }
+
+    #agent-selector {
+        height: 8;
+        margin-bottom: 2;
+        background: #44475a;
+        border: round #6272a4;
+    }
+
     #prompt-input {
-        height: 15;
+        height: 12;
         margin-bottom: 2;
         background: #44475a;
         border: round #6272a4;
@@ -386,19 +483,48 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     #button-container Button {
         margin: 0 1;
     }
+
+    SelectionList {
+        background: #44475a;
+    }
+
+    SelectionList > .selection-list--button {
+        color: #f8f8f2;
+    }
+
+    SelectionList > .selection-list--button-selected {
+        background: #6272a4;
+        color: #50fa7b;
+    }
     """
 
-    def __init__(self, agent: AgentRecord) -> None:
+    def __init__(self, agent: AgentRecord | None = None, agents: list[AgentRecord] | None = None) -> None:
         super().__init__()
         self.agent = agent
+        self.agents = agents or []
 
     def compose(self) -> ComposeResult:
         with Container(id="prompt-dialog"):
-            name = self.agent.nickname or self.agent.name
-            yield Label(f"Enter prompt for: {name}", classes="dialog-title")
+            if self.agent:
+                name = self.agent.nickname or self.agent.name
+                yield Label(f"Enter prompt for: {name}", classes="dialog-title")
+            else:
+                yield Label("Delegate Task to Agent", classes="dialog-title")
+                yield Label("Select Agent:", id="agent-label")
+                # Create selection list with agents
+                selections = [
+                    Selection(
+                        f"{a.nickname or a.name} [{a.vendor}]",
+                        a.id,
+                        a.id == (self.agent.id if self.agent else None),
+                    )
+                    for a in self.agents
+                ]
+                yield SelectionList(*selections, id="agent-selector")
+
             yield TextArea(id="prompt-input", language="markdown")
             yield Label("Working Directory (leave empty for default, enter 'null' for temp dir):", id="workdir-label")
-            workdir_value = self.agent.workdir or ""
+            workdir_value = self.agent.workdir if self.agent else ""
             yield Input(
                 value=workdir_value,
                 placeholder="Enter directory path or leave empty",
@@ -409,18 +535,41 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
                 yield Button("OK", variant="primary", id="ok-button")
                 yield Button("Cancel", variant="default", id="cancel-button")
 
+    def _get_selected_agent_id(self) -> str | None:
+        """Get the selected agent ID from the selector, if available."""
+        if self.agent or not self.agents:
+            return None
+
+        try:
+            selector = self.query_one("#agent-selector", SelectionList)
+            selected = selector.selected
+            if not selected:
+                self.app.notify("Please select an agent", severity="warning")
+                return None
+            return next(iter(selected))
+        except Exception:
+            # No selector if agent was pre-selected
+            return None
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "ok-button":
             text_area = self.query_one("#prompt-input", TextArea)
             prompt = text_area.text.strip()
-            if prompt:
-                workdir_input = self.query_one("#workdir-input", Input)
-                workdir_value = workdir_input.value.strip()
+            if not prompt:
+                return
 
-                # Process workdir: empty string or 'null' means None
-                workdir = None if not workdir_value or workdir_value.lower() == "null" else workdir_value
+            workdir_input = self.query_one("#workdir-input", Input)
+            workdir_value = workdir_input.value.strip()
 
-                self.dismiss((prompt, workdir))
+            # Process workdir: empty string or 'null' means None
+            workdir = None if not workdir_value or workdir_value.lower() == "null" else workdir_value
+
+            # Get selected agent ID if no agent was pre-selected
+            agent_id = self._get_selected_agent_id()
+            if not self.agent and not agent_id:
+                return  # Notification already shown in _get_selected_agent_id
+
+            self.dismiss((prompt, workdir, agent_id))
         elif event.button.id == "cancel-button":
             self.dismiss(None)
         elif event.button.id == "browse-button":
@@ -660,6 +809,30 @@ class OrchestratorTUI(App[None]):
         margin-top: 1;
     }
 
+    #log-header {
+        height: auto;
+        layout: horizontal;
+        margin-bottom: 1;
+    }
+
+    #log-level-selector {
+        width: 20;
+        height: 7;
+        background: #44475a;
+        border: round #6272a4;
+        margin-left: 2;
+    }
+
+    #log-level-selector > .option-list--option {
+        color: #f8f8f2;
+        padding: 0 1;
+    }
+
+    #log-level-selector > .option-list--option-highlighted {
+        background: #6272a4;
+        color: #50fa7b;
+    }
+
     #log-display {
         height: 1fr;
         background: #282a36;
@@ -709,11 +882,13 @@ class OrchestratorTUI(App[None]):
     BINDINGS: ClassVar[list[BindingType]] = [
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
+        ("ctrl+p", "command_palette", "Commands"),
     ]
 
     _pending_count: reactive[int] = reactive(0)
     _running_count: reactive[int] = reactive(0)
     _finished_count: reactive[int] = reactive(0)
+    _selected_log_level: reactive[str] = reactive("INFO")
 
     def __init__(
         self,
@@ -760,20 +935,99 @@ class OrchestratorTUI(App[None]):
                     yield QueueTable("finished", id="finished-table", classes="finished")
 
             with Container(id="log-panel"):
-                yield Label("📋  LOGS", classes="section-label logs")
-                yield RichLog(id="log-display", highlight=False, markup=True, wrap=False, auto_scroll=True)
+                with Horizontal(id="log-header"):
+                    yield Label("📋  LOGS", classes="section-label logs")
+                    yield OptionList(
+                        *[Option(level, id=f"log-level-{level}") for level in _LOG_LEVELS],
+                        id="log-level-selector",
+                    )
+                yield DataTable(id="log-display", show_cursor=False, zebra_stripes=True)
 
         yield Footer()
 
     def on_mount(self) -> None:
+        # Initialize log DataTable columns
+        log_table = self.query_one("#log-display", DataTable)
+        log_table.add_column("Level", width=10)
+        log_table.add_column("Timestamp", width=20)
+        log_table.add_column("Logger", width=35)
+        log_table.add_column("Message")
+
+        # Set initial log level selection
+        log_selector = self.query_one("#log-level-selector", OptionList)
+        # Find and highlight INFO option
+        for idx, option in enumerate(log_selector._options):
+            if option.id == "log-level-INFO":
+                log_selector.highlighted = idx
+                break
+
         self.set_interval(_REFRESH_INTERVAL, self._do_refresh)
         # Kick off an immediate refresh without blocking on_mount
         task = asyncio.create_task(self._load_data())
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-    async def action_refresh(self) -> None:
-        await self._load_data()
+    def action_refresh(self) -> None:
+        task = asyncio.create_task(self._load_data())
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
+    async def _handle_delegate_task_command(self) -> None:
+        """Handle the delegate-task command from the command palette."""
+
+        async def handle_prompt(result: tuple[str, str | None, str | None] | None) -> None:
+            if not result:
+                return
+            prompt, workdir, agent_id = result
+            if not agent_id:
+                self.notify("Please select an agent", severity="warning")
+                return
+            agent = next((a for a in self._agents if a.id == agent_id), None)
+            if not agent:
+                self.notify("Agent not found", severity="error")
+                return
+            await self.enqueue_prompt(agent, prompt, workdir)
+
+        await self.push_screen(PromptModal(None, self._agents), handle_prompt)
+
+    async def _handle_queue_stats_command(self) -> None:
+        """Handle the queue-stats command from the command palette."""
+        pending = len(await self._db.list_queue(status="pending"))
+        running = len(await self._db.list_queue(status="running"))
+        all_items = await self._db.list_queue()
+        completed = len([i for i in all_items if i.status == "completed"])
+        failed = len([i for i in all_items if i.status == "failed"])
+        self.notify(
+            f"Pending: {pending} | Running: {running} | Completed: {completed} | Failed: {failed}",
+            title="Queue Statistics",
+            timeout=5,
+        )
+
+    def action_command_palette(self) -> None:
+        """Show the command palette (Ctrl+P)."""
+
+        async def show_palette() -> None:
+            async def handle_command(command_id: str | None) -> None:
+                if command_id == "delegate-task":
+                    await self._handle_delegate_task_command()
+                elif command_id == "refresh":
+                    await self._load_data()
+                elif command_id == "queue-stats":
+                    await self._handle_queue_stats_command()
+
+            await self.push_screen(CommandPalette(), handle_command)
+
+        task = asyncio.create_task(show_palette())
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle log level selection."""
+        if event.option_list.id == "log-level-selector":
+            # Extract level from option ID (e.g., "log-level-DEBUG" -> "DEBUG")
+            level = event.option.id.replace("log-level-", "") if event.option.id else "INFO"
+            self._selected_log_level = level
+            self._refresh_log_panel()
 
     async def _do_refresh(self) -> None:
         await self._load_data()
@@ -853,17 +1107,22 @@ class OrchestratorTUI(App[None]):
         await self._load_data()
 
     def _refresh_log_panel(self) -> None:
-        """Read the log file tail and repopulate the RichLog widget."""
-        log_panel = self.query_one("#log-display", RichLog)
+        """Read the log file tail and repopulate the log DataTable with level filtering."""
+        log_table = self.query_one("#log-display", DataTable)
         lines = _tail_lines(self._log_file, _LOG_DISPLAY_LINES)
-        log_panel.clear()
+
+        # Define log level hierarchy for filtering
+        level_hierarchy = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
+        min_level = level_hierarchy.get(self._selected_log_level, 1)
+
+        log_table.clear()
         for line in lines:
             ts, level, name, message = _parse_log_line(line)
-            style = _LOG_LEVEL_STYLE.get(level, "white")
-            ts_part = f"[dim]{ts}[/dim] " if ts else ""
-            level_part = f"[{style}]{level:<8}[/]"
-            name_part = f"[dim cyan]{name}[/dim cyan] " if name else ""
-            log_panel.write(f"{ts_part}{level_part} {name_part}{message}")
+            # Filter by selected log level
+            if level_hierarchy.get(level, 1) >= min_level:
+                style = _LOG_LEVEL_STYLE.get(level, "white")
+                styled_level = f"[{style}]{level}[/]"
+                log_table.add_row(styled_level, ts, name, message)
 
     async def _merge_agents(self) -> list[AgentRecord]:
         """Get agents from TOML settings only."""
