@@ -814,19 +814,22 @@ class OrchestratorTUI(App[None]):
         height: auto;
         layout: horizontal;
         margin-bottom: 1;
-        align: left middle;
+    }
+
+    #log-title {
+        width: 1fr;
     }
 
     #log-level-label {
         width: auto;
         margin-right: 1;
         color: #8be9fd;
+        align: right middle;
     }
 
     #log-level-selector {
         width: 15;
         height: 3;
-        dock: right;
     }
 
     #log-level-selector Select {
@@ -937,7 +940,7 @@ class OrchestratorTUI(App[None]):
 
             with Container(id="log-panel"):
                 with Horizontal(id="log-header"):
-                    yield Label("📋  LOGS", classes="section-label logs")
+                    yield Label("📋  LOGS", classes="section-label logs", id="log-title")
                     yield Label("Level:", id="log-level-label")
                     yield Select(
                         [(level, level) for level in _LOG_LEVELS],
