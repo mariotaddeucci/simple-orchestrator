@@ -1,6 +1,5 @@
-import asyncio
-import contextlib
 import hashlib
+import time
 from datetime import UTC, datetime
 
 from croniter import croniter
@@ -40,43 +39,33 @@ class CronRunner:
         self._settings = settings or OrchestratorSettings()
         self._check_interval = check_interval
         self._running = False
-        self._loop_task: asyncio.Task[None] | None = None
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
-    async def start(self) -> None:
-        if self._running:
-            return
+    def start(self) -> None:
+        """Start cron loop. Blocks until stop() is called. Call from a thread worker."""
         self._running = True
-        self._loop_task = asyncio.create_task(self._loop(), name="cron-runner")
+        while self._running:
+            self._tick()
+            time.sleep(self._check_interval)
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         self._running = False
-        if self._loop_task and not self._loop_task.done():
-            self._loop_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._loop_task
 
-    async def run_forever(self) -> None:
-        """Start the cron loop and block until cancelled."""
-        self._running = True
-        await self._loop()
+    def run_forever(self) -> None:
+        """Alias for start() for backward compat."""
+        self.start()
 
     # ── internal loop ─────────────────────────────────────────────────────────
 
-    async def _loop(self) -> None:
-        while self._running:
-            await self._tick()
-            await asyncio.sleep(self._check_interval)
-
-    async def _tick(self) -> None:
+    def _tick(self) -> None:
         now = datetime.now(UTC)
         for cron_cfg in self._settings.crons:
-            await self._check_cron(cron_cfg, now)
+            self._check_cron(cron_cfg, now)
 
-    async def _check_cron(self, cron_cfg: CronSettings, now: datetime) -> None:
+    def _check_cron(self, cron_cfg: CronSettings, now: datetime) -> None:
         key = _cron_key(cron_cfg)
-        last_run = await self._db.get_cron_last_run(key)
+        last_run = self._db.get_cron_last_run(key)
 
         if last_run is None:
             should_run = True
@@ -88,7 +77,7 @@ class CronRunner:
         if not should_run:
             return
 
-        duplicate = await self._db.has_duplicate_pending(cron_cfg.agent_id, cron_cfg.prompt)
+        duplicate = self._db.has_duplicate_pending(cron_cfg.agent_id, cron_cfg.prompt)
         if duplicate:
             logger.debug(
                 "cron [%s] agent=%s: skip — duplicate pending/running",
@@ -97,6 +86,6 @@ class CronRunner:
             )
             return
 
-        await self._db.enqueue(cron_cfg.agent_id, cron_cfg.prompt)
-        await self._db.set_cron_last_run(key, now)
+        self._db.enqueue(cron_cfg.agent_id, cron_cfg.prompt)
+        self._db.set_cron_last_run(key, now)
         logger.info("cron [%s] agent=%s: enqueued", cron_cfg.cron, cron_cfg.agent_id)

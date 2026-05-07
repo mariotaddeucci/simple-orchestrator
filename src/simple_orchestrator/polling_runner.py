@@ -1,4 +1,5 @@
-import asyncio
+import threading
+import time
 
 from .db.orchestrator import OrchestratorDB
 from .logging_config import get_internal_logger
@@ -19,30 +20,48 @@ class PollingRunner:
     def __init__(self, db: OrchestratorDB, pollings: list[PollingSettings]) -> None:
         self._db = db
         self._pollings = pollings
+        self._running = False
+        self._threads: list[threading.Thread] = []
 
-    async def run_forever(self) -> None:
+    def start(self) -> None:
+        """Start all polling loops. Blocks until stop() is called. Call from a thread worker."""
         if not self._pollings:
             return
+        self._running = True
         logger.info("PollingRunner: starting %d polling(s)", len(self._pollings))
-        await asyncio.gather(*[self._polling_loop(p) for p in self._pollings])
+        for p in self._pollings:
+            t = threading.Thread(target=self._polling_loop, args=(p,), daemon=True)
+            self._threads.append(t)
+            t.start()
+        # Block until stop() is called
+        while self._running:
+            time.sleep(1)
 
-    async def _polling_loop(self, p: PollingSettings) -> None:
-        await self._fire(p)
-        while True:
-            await asyncio.sleep(p.interval_minutes * 60)
-            await self._fire(p)
+    def stop(self) -> None:
+        self._running = False
 
-    async def _fire(self, p: PollingSettings) -> None:
+    def run_forever(self) -> None:
+        """Alias for start() for backward compat."""
+        self.start()
+
+    def _polling_loop(self, p: PollingSettings) -> None:
+        self._fire(p)
+        while self._running:
+            time.sleep(p.interval_minutes * 60)
+            if self._running:
+                self._fire(p)
+
+    def _fire(self, p: PollingSettings) -> None:
         try:
-            if await self._db.has_duplicate_pending(p.agent_id, p.prompt):
+            if self._db.has_duplicate_pending(p.agent_id, p.prompt):
                 logger.debug("polling [%s]: skipped — duplicate pending/running", p.agent_id)
                 return
-            await self._db.enqueue(p.agent_id, p.prompt)
+            self._db.enqueue(p.agent_id, p.prompt)
             logger.info(
                 "polling [%s]: enqueued — %.60s%s",
                 p.agent_id,
                 p.prompt,
-                "…" if len(p.prompt) > 60 else "",
+                "..." if len(p.prompt) > 60 else "",
             )
         except Exception:
             logger.exception("polling [%s]: error during enqueue", p.agent_id)

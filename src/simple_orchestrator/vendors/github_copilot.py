@@ -27,6 +27,7 @@ class GithubCopilotVendor(BaseVendor):
     ) -> None:
         super().__init__(db)
         self._model = model
+        self._active_handles: dict[str, CopilotSession] = {}
 
     @property
     def vendor_name(self) -> str:
@@ -73,7 +74,7 @@ class GithubCopilotVendor(BaseVendor):
             )
             async with copilot_session:
                 logger.debug("GitHub Copilot vendor session created vendor_session_id=%s", copilot_session.session_id)
-                await self._db.update_status(
+                self._db.update_status(
                     session_id,
                     "running",
                     vendor_session_id=copilot_session.session_id,

@@ -1,8 +1,8 @@
+import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Self
-
-import aiosqlite
 
 from simple_orchestrator.models.session import SessionRecord
 
@@ -10,62 +10,63 @@ from simple_orchestrator.models.session import SessionRecord
 class SessionHistoryDB:
     def __init__(self, db_path: str | Path = "sessions.db"):
         self._db_path = db_path
-        self._conn: aiosqlite.Connection | None = None
+        self._conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
 
-    async def __aenter__(self) -> Self:
-        await self.connect()
+    def __enter__(self) -> Self:
+        self.connect()
         return self
 
-    async def __aexit__(self, *_: object) -> None:
-        await self.close()
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
-    async def connect(self) -> None:
-        self._conn = await aiosqlite.connect(self._db_path)
-        await self._init_schema()
+    def connect(self) -> None:
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._init_schema()
 
-    async def close(self) -> None:
+    def close(self) -> None:
         if self._conn:
-            await self._conn.close()
+            self._conn.close()
             self._conn = None
 
-    async def _init_schema(self) -> None:
+    def _init_schema(self) -> None:
         assert self._conn
-        await self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                vendor TEXT NOT NULL,
-                prompt TEXT NOT NULL,
-                workdir TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                status TEXT NOT NULL,
-                ended_at TEXT,
-                vendor_session_id TEXT
+        with self._lock:
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id TEXT PRIMARY KEY,
+                    vendor TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    workdir TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    ended_at TEXT,
+                    vendor_session_id TEXT
+                )
+            """)
+            self._conn.commit()
+
+    def save(self, record: SessionRecord) -> None:
+        assert self._conn
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO sessions (id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    record.id,
+                    record.vendor,
+                    record.prompt,
+                    record.workdir,
+                    record.started_at.isoformat(),
+                    record.status,
+                    record.ended_at.isoformat() if record.ended_at else None,
+                    record.vendor_session_id,
+                ),
             )
-        """)
-        await self._conn.commit()
+            self._conn.commit()
 
-    async def save(self, record: SessionRecord) -> None:
-        assert self._conn
-        await self._conn.execute(
-            """
-            INSERT INTO sessions
-                (id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                record.id,
-                record.vendor,
-                record.prompt,
-                record.workdir,
-                record.started_at.isoformat(),
-                record.status,
-                record.ended_at.isoformat() if record.ended_at else None,
-                record.vendor_session_id,
-            ),
-        )
-        await self._conn.commit()
-
-    async def update_status(
+    def update_status(
         self,
         session_id: str,
         status: str,
@@ -73,36 +74,29 @@ class SessionHistoryDB:
         vendor_session_id: str | None = None,
     ) -> None:
         assert self._conn
-        await self._conn.execute(
-            """
-            UPDATE sessions
-            SET status = ?,
-                ended_at = ?,
-                vendor_session_id = COALESCE(?, vendor_session_id)
-            WHERE id = ?
-            """,
-            (
-                status,
-                ended_at.isoformat() if ended_at else None,
-                vendor_session_id,
-                session_id,
-            ),
-        )
-        await self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE sessions SET status = ?, ended_at = ?, "
+                "vendor_session_id = COALESCE(?, vendor_session_id) WHERE id = ?",
+                (
+                    status,
+                    ended_at.isoformat() if ended_at else None,
+                    vendor_session_id,
+                    session_id,
+                ),
+            )
+            self._conn.commit()
 
-    async def get(self, session_id: str) -> SessionRecord | None:
+    def get(self, session_id: str) -> SessionRecord | None:
         assert self._conn
-        async with self._conn.execute(
+        row = self._conn.execute(
             "SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
             "FROM sessions WHERE id = ?",
             (session_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
-        if not row:
-            return None
-        return _row_to_record(row)
+        ).fetchone()
+        return _row_to_record(row) if row else None
 
-    async def list_sessions(
+    def list_sessions(
         self,
         vendor: str | None = None,
         status: str | None = None,
@@ -121,12 +115,11 @@ class SessionHistoryDB:
             "SELECT id, vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id "
             "FROM sessions " + where + " ORDER BY started_at DESC"
         )
-        async with self._conn.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
+        rows = self._conn.execute(query, params).fetchall()
         return [_row_to_record(r) for r in rows]
 
 
-def _row_to_record(row: aiosqlite.Row) -> SessionRecord:
+def _row_to_record(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
         id=row[0],
         vendor=row[1],

@@ -20,13 +20,13 @@ automatically when the TUI is started.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from croniter import croniter
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.reactive import reactive
@@ -276,7 +276,7 @@ class AgentCard(Static):
                 prompt, workdir, _agent_id = result
                 # agent_id should be None since agent is pre-selected
                 log.info("Calling enqueue_prompt for agent %s with workdir %s", self.agent.id, workdir)
-                await self.app.enqueue_prompt(self.agent, prompt, workdir)
+                self.app.enqueue_prompt(self.agent, prompt, workdir)
                 log.info("enqueue_prompt completed for agent %s", self.agent.id)
 
         await self.app.push_screen(PromptModal(self.agent, agents), handle_prompt)
@@ -903,7 +903,6 @@ class OrchestratorTUI(App[None]):
         self._db = db
         self._log_file = log_file
         self._settings = settings
-        self._bg_tasks: set[asyncio.Task[None]] = set()
         self._agents: list[AgentRecord] = []  # Store agents for interaction
         self._runner = runner
         self._poller = poller
@@ -962,17 +961,45 @@ class OrchestratorTUI(App[None]):
                 break
 
         self.set_interval(_REFRESH_INTERVAL, self._do_refresh)
-        # Kick off an immediate refresh without blocking on_mount
-        task = asyncio.create_task(self._load_data())
-        self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
+        # Immediate sync load
+        self._load_data()
+        # Start background workers
+        self._run_queue_worker()
+        self._run_cron_worker()
+        self._run_polling_worker()
+        self._run_mcp_server()
+
+    def on_unmount(self) -> None:
+        if self._runner:
+            self._runner.stop()
+        if self._cron_runner:
+            self._cron_runner.stop()
+        if self._poller:
+            self._poller.stop()
+
+    @work(thread=True, name="queue-runner", exclusive=True)
+    def _run_queue_worker(self) -> None:
+        if self._runner:
+            self._runner.start()
+
+    @work(thread=True, name="cron-runner", exclusive=True)
+    def _run_cron_worker(self) -> None:
+        if self._cron_runner:
+            self._cron_runner.start()
+
+    @work(thread=True, name="polling-runner", exclusive=True)
+    def _run_polling_worker(self) -> None:
+        if self._poller:
+            self._poller.start()
+
+    @work(thread=True, name="mcp-server", exclusive=True)
+    def _run_mcp_server(self) -> None:
+        asyncio.run(serve_sse_async(self._settings.mcp_server_host, self._settings.mcp_server_port))
 
     def action_refresh(self) -> None:
-        task = asyncio.create_task(self._load_data())
-        self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
+        self._load_data()
 
-    async def _handle_delegate_task_command(self) -> None:
+    def _handle_delegate_task_command(self) -> None:
         """Handle the delegate-task command from the command palette."""
 
         async def handle_prompt(result: tuple[str, str | None, str | None] | None) -> None:
@@ -986,15 +1013,15 @@ class OrchestratorTUI(App[None]):
             if not agent:
                 self.notify("Agent not found", severity="error")
                 return
-            await self.enqueue_prompt(agent, prompt, workdir)
+            self.enqueue_prompt(agent, prompt, workdir)
 
-        await self.push_screen(PromptModal(None, self._agents), handle_prompt)
+        self.push_screen(PromptModal(None, self._agents), handle_prompt)
 
-    async def _handle_queue_stats_command(self) -> None:
+    def _handle_queue_stats_command(self) -> None:
         """Handle the queue-stats command from the command palette."""
-        pending = len(await self._db.list_queue(status="pending"))
-        running = len(await self._db.list_queue(status="running"))
-        all_items = await self._db.list_queue()
+        pending = len(self._db.list_queue(status="pending"))
+        running = len(self._db.list_queue(status="running"))
+        all_items = self._db.list_queue()
         completed = len([i for i in all_items if i.status == "completed"])
         failed = len([i for i in all_items if i.status == "failed"])
         self.notify(
@@ -1006,20 +1033,15 @@ class OrchestratorTUI(App[None]):
     def action_command_palette(self) -> None:
         """Show the command palette (Ctrl+P)."""
 
-        async def show_palette() -> None:
-            async def handle_command(command_id: str | None) -> None:
-                if command_id == "delegate-task":
-                    await self._handle_delegate_task_command()
-                elif command_id == "refresh":
-                    await self._load_data()
-                elif command_id == "queue-stats":
-                    await self._handle_queue_stats_command()
+        async def handle_command(command_id: str | None) -> None:
+            if command_id == "delegate-task":
+                self._handle_delegate_task_command()
+            elif command_id == "refresh":
+                self._load_data()
+            elif command_id == "queue-stats":
+                self._handle_queue_stats_command()
 
-            await self.push_screen(CommandPalette(), handle_command)
-
-        task = asyncio.create_task(show_palette())
-        self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
+        self.push_screen(CommandPalette(), handle_command)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle log level selection."""
@@ -1029,14 +1051,14 @@ class OrchestratorTUI(App[None]):
             self._selected_log_level = level
             self._refresh_log_panel()
 
-    async def _do_refresh(self) -> None:
-        await self._load_data()
+    def _do_refresh(self) -> None:
+        self._load_data()
 
-    async def enqueue_prompt(self, agent: AgentRecord, prompt: str, workdir: str | None = None) -> None:
+    def enqueue_prompt(self, agent: AgentRecord, prompt: str, workdir: str | None = None) -> None:
         """Enqueue a new task for the given agent with the provided prompt and optional workdir."""
         log = logging.getLogger(__name__)
         log.info("TUI enqueue_prompt: agent_id=%s, prompt=%s, workdir=%s", agent.id, prompt[:50], workdir)
-        item = await self._db.enqueue(agent_id=agent.id, prompt=prompt, workdir=workdir)
+        item = self._db.enqueue(agent_id=agent.id, prompt=prompt, workdir=workdir)
         log.info(
             "TUI enqueue_prompt: item created with id=%s, status=%s, workdir=%s",
             item.id,
@@ -1051,7 +1073,7 @@ class OrchestratorTUI(App[None]):
             severity="information",
             timeout=3,
         )
-        await self._load_data()
+        self._load_data()
         log.info("TUI enqueue_prompt: data reloaded")
 
     def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
@@ -1077,34 +1099,26 @@ class OrchestratorTUI(App[None]):
         if not item:
             return
 
-        # Create a background task to handle the action
         if table._mode == "pending":
-            task = asyncio.create_task(self._cancel_item(item_id))
-            self._bg_tasks.add(task)
-            task.add_done_callback(self._bg_tasks.discard)
+            self._cancel_item(item_id)
         elif table._mode == "running":
-            task = asyncio.create_task(self._kill_item(item))
-            self._bg_tasks.add(task)
-            task.add_done_callback(self._bg_tasks.discard)
+            self._kill_item(item)
 
-    async def _cancel_item(self, item_id: str) -> None:
+    def _cancel_item(self, item_id: str) -> None:
         """Cancel a pending queue item."""
-        await self._db.cancel_queue_item(item_id)
-        await self._load_data()
+        self._db.cancel_queue_item(item_id)
+        self._load_data()
 
-    async def _kill_item(self, item: QueueItem) -> None:
+    def _kill_item(self, item: QueueItem) -> None:
         """Kill a running queue item by killing its session."""
         if not item.session_id:
             return
-        # We need to get the vendor to kill the session
-        # For now, we'll just update the status in DB
-        # A more complete implementation would need access to the vendor
-        await self._db.update_queue_item(
+        self._db.update_queue_item(
             item.id,
             status="killed",
             ended_at=datetime.now(UTC),
         )
-        await self._load_data()
+        self._load_data()
 
     def _refresh_log_panel(self) -> None:
         """Read the log file tail and repopulate the log DataTable with level filtering."""
@@ -1124,7 +1138,7 @@ class OrchestratorTUI(App[None]):
                 styled_level = f"[{style}]{level}[/]"
                 log_table.add_row(styled_level, ts, name, message)
 
-    async def _merge_agents(self) -> list[AgentRecord]:
+    def _merge_agents(self) -> list[AgentRecord]:
         """Get agents from TOML settings only."""
         agents_map: dict[str, AgentRecord] = {}
 
@@ -1143,18 +1157,18 @@ class OrchestratorTUI(App[None]):
 
         return list(agents_map.values())
 
-    async def _load_data(self) -> None:  # noqa: C901
-        pending = await self._db.list_queue(status="pending")
-        running = await self._db.list_queue(status="running")
+    def _load_data(self) -> None:  # noqa: C901
+        pending = self._db.list_queue(status="pending")
+        running = self._db.list_queue(status="running")
 
         # Finished = completed + failed + killed + cancelled, newest first
-        all_items = await self._db.list_queue()
+        all_items = self._db.list_queue()
         finished = [i for i in all_items if i.status in ("completed", "failed", "killed", "cancelled") and i.ended_at]
         finished.sort(key=lambda i: i.ended_at or datetime.min.replace(tzinfo=UTC), reverse=True)
         finished = finished[:_FINISHED_LIMIT]
 
         # Merge agents from settings and DB (settings take priority, matching QueueRunner behavior)
-        all_agents = await self._merge_agents()
+        all_agents = self._merge_agents()
         self._agents = all_agents  # Store for later use
         agent_labels: dict[str, str] = {a.id: a.nickname or a.name for a in all_agents}
 
@@ -1183,7 +1197,7 @@ class OrchestratorTUI(App[None]):
             # Calculate next run based on interval
             # Use a key for tracking last run time (similar to cron)
             key = f"polling_{polling.agent_id}_{polling.prompt}"
-            last_run = await self._db.get_cron_last_run(key)
+            last_run = self._db.get_cron_last_run(key)
             if last_run:
                 # Calculate next run from last run + interval
                 next_run = datetime.fromtimestamp(last_run.timestamp() + polling.interval_minutes * 60, UTC)
@@ -1197,7 +1211,7 @@ class OrchestratorTUI(App[None]):
         # Add cron events
         for cron_cfg in self._settings.crons:
             key = f"cron_{cron_cfg.agent_id}_{cron_cfg.prompt}"
-            last_run = await self._db.get_cron_last_run(key)
+            last_run = self._db.get_cron_last_run(key)
             now = datetime.now(UTC)
 
             if last_run:
@@ -1236,7 +1250,7 @@ class OrchestratorTUI(App[None]):
         self._refresh_log_panel()
 
 
-async def run_tui() -> None:
+def run_tui() -> None:
     """Open the DB connection, start background processes, and launch the TUI."""
     settings = OrchestratorSettings()
     # Disable console logging for TUI to avoid interfering with display
@@ -1246,7 +1260,7 @@ async def run_tui() -> None:
     log = get_internal_logger(__name__)
     log.info("Starting TUI with background processes")
 
-    async with OrchestratorDB(settings.db_path) as db:
+    with OrchestratorDB(settings.db_path) as db:
         # Initialize vendors
         vendors: dict = {"claude_code": ClaudeCodeVendor(db)}
 
@@ -1257,28 +1271,6 @@ async def run_tui() -> None:
 
         # Create TUI app
         app = OrchestratorTUI(db, log_file, settings, runner, poller, cron_runner)
+        app.run()
 
-        # Start background tasks
-        async def run_background_services() -> None:
-            """Run all background services concurrently."""
-            try:
-                await asyncio.gather(
-                    runner.run_forever(),
-                    poller.run_forever(),
-                    cron_runner.run_forever(),
-                    serve_sse_async(settings.mcp_server_host, settings.mcp_server_port),
-                )
-            except asyncio.CancelledError:
-                log.info("Background services cancelled")
-                raise
-
-        # Run TUI and background services concurrently
-        bg_task = asyncio.create_task(run_background_services())
-        try:
-            await app.run_async()
-        finally:
-            # Cancel background services when TUI exits
-            bg_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await bg_task
-            log.info("TUI and background processes stopped")
+    log.info("TUI and background processes stopped")
