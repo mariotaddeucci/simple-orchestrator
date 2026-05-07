@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import threading
 
 from .cron_runner import CronRunner
 from .db import OrchestratorDB, SessionHistoryDB
@@ -78,21 +77,21 @@ def main() -> None:
         serve()
 
     elif args.command == "start":
-        _start()
+        asyncio.run(_start())
 
     elif args.command == "tui":
-        run_tui()
+        asyncio.run(run_tui())
 
     else:
         # Default to TUI when no command is specified
-        run_tui()
+        asyncio.run(run_tui())
 
 
-def _start() -> None:
+async def _start() -> None:
     settings = OrchestratorSettings()
     setup_logging(settings.logs_dir, settings.log_level)
 
-    with OrchestratorDB(settings.db_path) as db:
+    async with OrchestratorDB(settings.db_path) as db:
         vendors: dict = {"claude_code": ClaudeCodeVendor(db)}
         runner = QueueRunner(db, vendors, settings)
         poller = PollingRunner(db, settings.pollings)
@@ -104,11 +103,8 @@ def _start() -> None:
             settings.mcp_server_port,
         )
 
-        # Start runners in background threads
-        t1 = threading.Thread(target=runner.start, daemon=True)
-        t2 = threading.Thread(target=poller.start, daemon=True)
-        t1.start()
-        t2.start()
-
-        # MCP server (async) blocks main thread
-        asyncio.run(serve_sse_async(settings.mcp_server_host, settings.mcp_server_port))
+        await asyncio.gather(
+            runner.run_forever(),
+            poller.run_forever(),
+            serve_sse_async(settings.mcp_server_host, settings.mcp_server_port),
+        )

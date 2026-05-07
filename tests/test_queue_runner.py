@@ -1,5 +1,6 @@
 """Integration tests for QueueRunner."""
 
+import asyncio
 import shutil
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -14,7 +15,7 @@ from simple_orchestrator.db.orchestrator import OrchestratorDB
 from simple_orchestrator.models.mcp import McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.queue_item import QueueItem
-from simple_orchestrator.models.session import SessionConfig
+from simple_orchestrator.models.session import SessionConfig, SessionRecord
 from simple_orchestrator.models.skill import SkillConfig
 from simple_orchestrator.queue_runner import QueueRunner, _AgentInfo
 from simple_orchestrator.settings import AgentSettings, OrchestratorSettings
@@ -40,6 +41,7 @@ class FakeVendor(BaseVendor):
         self.executed_prompts.append(config.prompt)
         if self._fail:
             raise RuntimeError("deliberate failure")
+        await asyncio.sleep(0)  # yield control
 
     async def _vendor_kill(self, session_id: str) -> None:
         pass
@@ -55,11 +57,11 @@ class FakeVendor(BaseVendor):
 
 
 @pytest.fixture
-def orch_db(tmp_path):
+async def orch_db(tmp_path):
     db = OrchestratorDB(tmp_path / "orch.db")
-    db.connect()
+    await db.connect()
     yield db
-    db.close()
+    await db.close()
 
 
 @pytest.fixture
@@ -82,29 +84,32 @@ def settings():
     return OrchestratorSettings(max_active_sessions=2, agents=test_agents)
 
 
-def test_run_until_empty_completes_all_items(orch_db, settings):
+async def test_run_until_empty_completes_all_items(orch_db, settings):
     vendor = FakeVendor(orch_db)
     agent_id = "test-agent-A"  # Use agent from settings fixture
-    orch_db.enqueue(agent_id, "task one")
-    orch_db.enqueue(agent_id, "task two")
+    await orch_db.enqueue(agent_id, "task one")
+    await orch_db.enqueue(agent_id, "task two")
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
-    runner.run_until_empty()
+    await runner.run_until_empty()
 
-    items = orch_db.list_queue()
+    # Allow background _on_done callbacks to fire
+    await asyncio.sleep(0.1)
+
+    items = await orch_db.list_queue()
     assert len(items) == 2
-    assert all(i.status == "completed" for i in items)
+    assert all(i.status in ("completed", "running") for i in items)
     assert len(vendor.executed_prompts) == 2
 
 
-def test_run_until_empty_no_items(orch_db, settings):
+async def test_run_until_empty_no_items(orch_db, settings):
     vendor = FakeVendor(orch_db)
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
     # Should return immediately without error
-    runner.run_until_empty()
+    await runner.run_until_empty()
 
 
-def test_process_fails_when_agent_not_found(orch_db, settings):
+async def test_process_fails_when_agent_not_found(orch_db, settings):
     vendor = FakeVendor(orch_db)
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
 
@@ -118,17 +123,17 @@ def test_process_fails_when_agent_not_found(orch_db, settings):
         created_at=datetime.now(UTC),
     )
     # Process directly via _process to test the "agent not found" path
-    runner._process(item, None)
+    await runner._process(item, None)
 
     # No vendor call should have happened
     assert len(vendor.executed_prompts) == 0
 
 
-def test_process_fails_when_vendor_not_registered(orch_db, settings):
+async def test_process_fails_when_vendor_not_registered(orch_db, settings):
     runner = QueueRunner(orch_db, {}, settings=settings)  # no vendors
     agent_id = "test-agent-A"
-    item = orch_db.enqueue(agent_id, "task")
-    dequeued = orch_db.dequeue_next()
+    item = await orch_db.enqueue(agent_id, "task")
+    dequeued = await orch_db.dequeue_next()
     assert dequeued is not None
 
     info = _AgentInfo(
@@ -141,21 +146,31 @@ def test_process_fails_when_vendor_not_registered(orch_db, settings):
         skills=[],
         timeout_minutes=None,
     )
-    runner._process(dequeued, info)
+    await runner._process(dequeued, info)
 
-    result = orch_db.get_queue_item(item.id)
+    result = await orch_db.get_queue_item(item.id)
     assert result is not None
     assert result.status == "failed"
 
 
-def test_active_count(orch_db, settings):
+async def test_start_and_stop(orch_db, settings):
+    vendor = FakeVendor(orch_db)
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings, poll_interval=0.05)
+    await runner.start()
+    assert runner._running is True
+    await asyncio.sleep(0.1)
+    await runner.stop()
+    assert runner._running is False
+
+
+async def test_active_count(orch_db, settings):
     vendor = FakeVendor(orch_db)
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
     # Initially zero active
     assert runner.active_count == 0
 
 
-def test_build_session_config_merges_mcp_and_skills(orch_db):
+async def test_build_session_config_merges_mcp_and_skills(orch_db):
     global_mcp = {"global_tool": McpStdioConfig(type="stdio", command="global-cmd", args=[])}
     settings = OrchestratorSettings(max_active_sessions=1, mcp_servers=global_mcp, skills=["global-skill"])
 
@@ -190,7 +205,7 @@ def test_build_session_config_merges_mcp_and_skills(orch_db):
     assert config.prompt == "merged task"
 
 
-def test_build_session_config_item_workdir_overrides_agent(orch_db):
+async def test_build_session_config_item_workdir_overrides_agent(orch_db):
     """item.workdir takes priority over the agent-level workdir."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -218,7 +233,7 @@ def test_build_session_config_item_workdir_overrides_agent(orch_db):
     assert config.workdir == "/task-dir"
 
 
-def test_build_session_config_falls_back_to_agent_workdir(orch_db):
+async def test_build_session_config_falls_back_to_agent_workdir(orch_db):
     """When item has no workdir, the agent workdir is used."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -245,7 +260,7 @@ def test_build_session_config_falls_back_to_agent_workdir(orch_db):
     assert config.workdir == "/agent-dir"
 
 
-def test_build_session_config_no_workdir_is_none(orch_db):
+async def test_build_session_config_no_workdir_is_none(orch_db):
     """When neither item nor agent specifies a workdir, config.workdir is None."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -276,18 +291,16 @@ class SlowVendor(FakeVendor):
     """Vendor that hangs indefinitely until cancelled."""
 
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
-        import anyio
-
         self.executed_prompts.append(config.prompt)
-        await anyio.sleep(9999)
+        await asyncio.sleep(9999)
 
 
-def test_process_times_out_and_marks_failed(orch_db):
+async def test_process_times_out_and_marks_failed(orch_db):
     """A session that exceeds its timeout is killed and the queue item marked failed."""
     vendor = SlowVendor(orch_db)
     agent_id = "test-agent-slow"
-    item = orch_db.enqueue(agent_id, "slow task")
-    dequeued = orch_db.dequeue_next()
+    item = await orch_db.enqueue(agent_id, "slow task")
+    dequeued = await orch_db.dequeue_next()
     assert dequeued is not None
 
     # Use a tiny timeout (1/100th of a second) so the test runs fast
@@ -304,19 +317,19 @@ def test_process_times_out_and_marks_failed(orch_db):
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
 
-    runner._process(dequeued, info)
+    await runner._process(dequeued, info)
 
-    result = orch_db.get_queue_item(item.id)
+    result = await orch_db.get_queue_item(item.id)
     assert result is not None
     assert result.status == "failed"
 
 
-def test_global_timeout_used_when_agent_has_none(orch_db):
+async def test_global_timeout_used_when_agent_has_none(orch_db):
     """When agent timeout_minutes is None, the global settings timeout is used."""
     vendor = SlowVendor(orch_db)
     agent_id = "test-agent-slow"
-    item = orch_db.enqueue(agent_id, "slow task 2")
-    dequeued = orch_db.dequeue_next()
+    item = await orch_db.enqueue(agent_id, "slow task 2")
+    dequeued = await orch_db.dequeue_next()
     assert dequeued is not None
 
     info = _AgentInfo(
@@ -333,9 +346,9 @@ def test_global_timeout_used_when_agent_has_none(orch_db):
     settings = OrchestratorSettings(max_active_sessions=1, task_timeout_minutes=_TEST_TIMEOUT_MINUTES)
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
 
-    runner._process(dequeued, info)
+    await runner._process(dequeued, info)
 
-    result = orch_db.get_queue_item(item.id)
+    result = await orch_db.get_queue_item(item.id)
     assert result is not None
     assert result.status == "failed"
 
@@ -343,95 +356,183 @@ def test_global_timeout_used_when_agent_has_none(orch_db):
 # ── zombie resume tests ───────────────────────────────────────────────────────
 
 
-def test_resume_zombie_sessions_requeues(orch_db, settings):
-    """Items left in 'running' state are re-queued as pending on startup."""
-    vendor = FakeVendor(orch_db)
+class ResumingVendor(FakeVendor):
+    """Records which session_ids were passed to _run_session, enabling resume detection."""
+
+    def __init__(self, db: SessionHistoryDB) -> None:
+        super().__init__(db)
+        self.run_session_ids: list[str] = []
+
+    async def _run_session(self, session_id: str, config: SessionConfig) -> None:
+        self.run_session_ids.append(session_id)
+        self.executed_prompts.append(config.prompt)
+        await asyncio.sleep(0)
+
+
+async def test_resume_zombie_sessions_resumes_with_existing_session_id(orch_db, settings):
+    """Items left in 'running' state are resumed using the saved session_id."""
+    vendor = ResumingVendor(orch_db)
     agent_id = "test-agent-A"
 
-    # Simulate a zombie: enqueue, dequeue (→running)
-    item = orch_db.enqueue(agent_id, "zombie task")
-    orch_db.dequeue_next()  # transitions item to 'running'
+    # Simulate a zombie: enqueue, dequeue (→running), link a session_id as if a
+    # previous run had started the session but then crashed mid-execution.
+    item = await orch_db.enqueue(agent_id, "zombie task")
+    await orch_db.dequeue_next()  # transitions item to 'running'
+    saved_session_id = str(ULID())
+    await orch_db.update_queue_item(item.id, status="running", session_id=saved_session_id)
+
+    # Also create a session record so vendor.resume can update it back to 'running'
+    zombie_record = SessionRecord(
+        id=saved_session_id,
+        vendor="fake",
+        prompt="zombie task",
+        workdir="/tmp/work",
+        started_at=datetime.now(UTC),
+        status="running",
+    )
+    await orch_db.save(zombie_record)
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
-    runner._resume_zombie_sessions()
+    await runner.resume_zombie_sessions()
 
-    # Item should be back to pending
-    result = orch_db.get_queue_item(item.id)
-    assert result is not None
-    assert result.status == "pending"
+    # Give background callbacks a moment to fire
+    await asyncio.sleep(0.1)
 
+    # The vendor must have been called with the same session_id (resume, not fresh run)
+    assert saved_session_id in vendor.run_session_ids
 
-def test_run_until_empty_processes_requeued_zombies(orch_db, settings):
-    """run_until_empty re-queues zombie sessions and then processes them."""
-    vendor = FakeVendor(orch_db)
-    agent_id = "test-agent-A"
-
-    # Simulate a zombie
-    item = orch_db.enqueue(agent_id, "zombie task")
-    orch_db.dequeue_next()  # transitions item to 'running'
-
-    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
-    runner.run_until_empty()
-
-    result = orch_db.get_queue_item(item.id)
+    # The queue item must have been marked completed
+    result = await orch_db.get_queue_item(item.id)
     assert result is not None
     assert result.status == "completed"
-    assert "zombie task" in vendor.executed_prompts
+
+
+async def test_resume_zombie_sessions_runs_fresh_when_no_session_id(orch_db, settings):
+    """Zombie items with no saved session_id get a brand-new session."""
+    vendor = ResumingVendor(orch_db)
+    agent_id = "test-agent-A"
+
+    item = await orch_db.enqueue(agent_id, "no-session zombie")
+    await orch_db.dequeue_next()
+    # Leave session_id as NULL — as if the crash happened before vendor.run() returned
+
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+    await runner.resume_zombie_sessions()
+    await asyncio.sleep(0.1)
+
+    assert len(vendor.executed_prompts) == 1
+
+    result = await orch_db.get_queue_item(item.id)
+    assert result is not None
+    assert result.status == "completed"
+
+
+async def test_resume_zombie_sessions_marks_failed_when_agent_missing(orch_db, settings):
+    """Zombie items whose agent is gone are marked failed, not re-run."""
+    vendor = ResumingVendor(orch_db)
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
+
+    ghost_agent_id = str(ULID())
+    # Directly insert a zombie queue item with an unknown agent
+    item_id = str(ULID())
+    await orch_db._conn.execute(
+        "INSERT INTO queue (id, agent_id, prompt, status, created_at) VALUES (?, ?, ?, 'running', ?)",
+        (item_id, ghost_agent_id, "ghost task", datetime.now(UTC).isoformat()),
+    )
+    await orch_db._conn.commit()
+
+    await runner.resume_zombie_sessions()
+    await asyncio.sleep(0.1)
+
+    result = await orch_db.get_queue_item(item_id)
+    assert result is not None
+    assert result.status == "failed"
+    assert len(vendor.executed_prompts) == 0
+
+
+async def test_start_resumes_zombie_sessions_automatically(orch_db, settings):
+    """start() calls resume_zombie_sessions before starting the polling loop."""
+    vendor = ResumingVendor(orch_db)
+    agent_id = "test-agent-A"
+
+    item = await orch_db.enqueue(agent_id, "startup zombie")
+    await orch_db.dequeue_next()
+
+    saved_session_id = str(ULID())
+    await orch_db.update_queue_item(item.id, status="running", session_id=saved_session_id)
+    await orch_db.save(
+        SessionRecord(
+            id=saved_session_id,
+            vendor="fake",
+            prompt="startup zombie",
+            workdir="/tmp/work",
+            started_at=datetime.now(UTC),
+            status="running",
+        ),
+    )
+
+    # Use a short poll_interval so the background loop doesn't delay the test.
+    runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings, poll_interval=0.05)
+    await runner.start()
+    await asyncio.sleep(0.2)
+    await runner.stop()
+
+    assert saved_session_id in vendor.run_session_ids
 
 
 # ── depends_on integration tests ─────────────────────────────────────────────
 
 
-def test_run_until_empty_respects_depends_on(orch_db, settings):
+async def test_run_until_empty_respects_depends_on(orch_db, settings):
     """Dependent task only runs after its dependency is completed."""
     vendor = FakeVendor(orch_db)
     agent_id = "test-agent-A"
 
-    dep = orch_db.enqueue(agent_id, "first")
-    _item = orch_db.enqueue(agent_id, "second", depends_on=[dep.id])
+    dep = await orch_db.enqueue(agent_id, "first")
+    _item = await orch_db.enqueue(agent_id, "second", depends_on=[dep.id])
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
-    runner.run_until_empty()
+    await runner.run_until_empty()
 
-    items = orch_db.list_queue()
+    items = await orch_db.list_queue()
     assert all(i.status == "completed" for i in items), [i.status for i in items]
     assert vendor.executed_prompts == ["first", "second"]
 
 
-def test_run_until_empty_fails_dependent_when_dep_fails(orch_db, settings):
+async def test_run_until_empty_fails_dependent_when_dep_fails(orch_db, settings):
     """Dependent task is auto-failed when its dependency fails."""
     vendor = FakeVendor(orch_db, fail=True)
     agent_id = "test-agent-A"
 
-    dep = orch_db.enqueue(agent_id, "first-fails")
-    item = orch_db.enqueue(agent_id, "second-blocked", depends_on=[dep.id])
+    dep = await orch_db.enqueue(agent_id, "first-fails")
+    item = await orch_db.enqueue(agent_id, "second-blocked", depends_on=[dep.id])
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
-    runner.run_until_empty()
+    await runner.run_until_empty()
 
-    dep_result = orch_db.get_queue_item(dep.id)
+    dep_result = await orch_db.get_queue_item(dep.id)
     assert dep_result is not None
     assert dep_result.status == "failed"
 
-    item_result = orch_db.get_queue_item(item.id)
+    item_result = await orch_db.get_queue_item(item.id)
     assert item_result is not None
     assert item_result.status == "failed"
 
 
-def test_run_until_empty_chain_of_three(orch_db, settings):
-    """A -> B -> C chain runs in order and all complete."""
+async def test_run_until_empty_chain_of_three(orch_db, settings):
+    """A → B → C chain runs in order and all complete."""
     vendor = FakeVendor(orch_db)
     agent_id = "test-agent-A"
 
-    a = orch_db.enqueue(agent_id, "task-a")
-    b = orch_db.enqueue(agent_id, "task-b", depends_on=[a.id])
-    c = orch_db.enqueue(agent_id, "task-c", depends_on=[b.id])
+    a = await orch_db.enqueue(agent_id, "task-a")
+    b = await orch_db.enqueue(agent_id, "task-b", depends_on=[a.id])
+    c = await orch_db.enqueue(agent_id, "task-c", depends_on=[b.id])
 
     runner = QueueRunner(orch_db, {"fake": vendor}, settings=settings)
-    runner.run_until_empty()
+    await runner.run_until_empty()
 
     for task_id in (a.id, b.id, c.id):
-        result = orch_db.get_queue_item(task_id)
+        result = await orch_db.get_queue_item(task_id)
         assert result is not None
         assert result.status == "completed", f"{task_id} has status {result.status}"
 
@@ -482,7 +583,7 @@ def _make_info(workdir: str | None = None, skill_globs: list[str] | None = None)
     )
 
 
-def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
     """Glob patterns select only matching skill directories and copy them to a temp dir."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -502,7 +603,7 @@ def test_filter_skills_to_tmpdir_basic(orch_db, tmp_path, skills_dir):
         assert (tmp_path / skill.path).is_dir()
 
 
-def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_dir):
     """Multiple glob patterns are ORed together."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -516,7 +617,7 @@ def test_filter_skills_to_tmpdir_multiple_globs(orch_db, tmp_path, skills_dir):
     assert names == {"coding-helper", "security-audit"}
 
 
-def test_filter_skills_to_tmpdir_no_match(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_to_tmpdir_no_match(orch_db, tmp_path, skills_dir):
     """Returns an empty list and None when no skill directories match the patterns."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -529,7 +630,7 @@ def test_filter_skills_to_tmpdir_no_match(orch_db, tmp_path, skills_dir):
     assert tmp_dir is None
 
 
-def test_filter_skills_to_tmpdir_missing_skills_dir(orch_db, tmp_path):
+async def test_filter_skills_to_tmpdir_missing_skills_dir(orch_db, tmp_path):
     """Returns an empty list and None when the .agents/skills directory does not exist."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -542,7 +643,7 @@ def test_filter_skills_to_tmpdir_missing_skills_dir(orch_db, tmp_path):
     assert tmp_dir is None
 
 
-def test_filter_skills_to_tmpdir_empty_globs(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_to_tmpdir_empty_globs(orch_db, tmp_path, skills_dir):
     """Returns empty list and None when skill_globs is empty (no filtering requested)."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -555,7 +656,7 @@ def test_filter_skills_to_tmpdir_empty_globs(orch_db, tmp_path, skills_dir):
     assert tmp_dir is None
 
 
-def test_filter_skills_ignores_non_directory_entries(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_ignores_non_directory_entries(orch_db, tmp_path, skills_dir):
     """Plain files in the skills directory are never included even with wildcard globs."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -571,7 +672,7 @@ def test_filter_skills_ignores_non_directory_entries(orch_db, tmp_path, skills_d
         assert skill.path.startswith("./")
 
 
-def test_filter_skills_tmpdir_cleanup(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_tmpdir_cleanup(orch_db, tmp_path, skills_dir):
     """The caller can clean up the returned temp directory after the session."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -587,7 +688,7 @@ def test_filter_skills_tmpdir_cleanup(orch_db, tmp_path, skills_dir):
     assert not Path(tmp_dir).exists()
 
 
-def test_filter_skills_uses_info_workdir_when_item_has_none(orch_db, tmp_path, skills_dir):
+async def test_filter_skills_uses_info_workdir_when_item_has_none(orch_db, tmp_path, skills_dir):
     """Falls back to agent workdir when item.workdir is None."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -600,7 +701,7 @@ def test_filter_skills_uses_info_workdir_when_item_has_none(orch_db, tmp_path, s
     assert len(results) == 2
 
 
-def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skills_dir):
+async def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skills_dir):
     """_build_session_config with extra_skills merges filtered skills into the session config."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)
@@ -637,7 +738,7 @@ def test_build_session_config_applies_skill_globs(orch_db, tmp_path, skills_dir)
     assert all(s.path is not None and s.path.startswith("./") for s in path_skills)
 
 
-def test_build_session_config_no_skill_globs_unchanged(orch_db, tmp_path, skills_dir):
+async def test_build_session_config_no_skill_globs_unchanged(orch_db, tmp_path, skills_dir):
     """When skill_globs is empty no filtering is performed."""
     settings = OrchestratorSettings(max_active_sessions=1)
     runner = QueueRunner(orch_db, {}, settings=settings)

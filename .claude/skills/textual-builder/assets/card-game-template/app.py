@@ -68,14 +68,14 @@ class Card(Widget):
     class Selected(Message):
         """Posted when card is selected."""
 
-        def __init__(self, card: Card) -> None:
+        def __init__(self, card: "Card") -> None:
             super().__init__()
             self.card = card
 
     class Played(Message):
         """Posted when card is played."""
 
-        def __init__(self, card: Card) -> None:
+        def __init__(self, card: "Card") -> None:
             super().__init__()
             self.card = card
 
