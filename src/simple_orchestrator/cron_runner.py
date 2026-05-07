@@ -1,12 +1,15 @@
 import hashlib
-import time
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
+import anyio
 from croniter import croniter
 
-from .db.orchestrator import OrchestratorDB
 from .logging_config import get_internal_logger
 from .settings import CronSettings, OrchestratorSettings
+
+if TYPE_CHECKING:
+    from .db.orchestrator import OrchestratorDB
 
 logger = get_internal_logger(__name__)
 
@@ -39,22 +42,28 @@ class CronRunner:
         self._settings = settings or OrchestratorSettings()
         self._check_interval = check_interval
         self._running = False
+        self._stop_event: anyio.Event | None = None
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
-    def start(self) -> None:
-        """Start cron loop. Blocks until stop() is called. Call from a thread worker."""
+    async def start(self) -> None:
+        """Start cron loop. Blocks until stop() is called.
+        Call from an async Textual worker — runs in the app's event loop.
+        """
         self._running = True
-        while self._running:
-            self._tick()
-            time.sleep(self._check_interval)
+        self._stop_event = anyio.Event()
+        try:
+            while not self._stop_event.is_set():
+                self._tick()
+                with anyio.move_on_after(self._check_interval):
+                    await self._stop_event.wait()
+        finally:
+            self._stop_event = None
 
     def stop(self) -> None:
         self._running = False
-
-    def run_forever(self) -> None:
-        """Alias for start() for backward compat."""
-        self.start()
+        if self._stop_event is not None:
+            self._stop_event.set()
 
     # ── internal loop ─────────────────────────────────────────────────────────
 

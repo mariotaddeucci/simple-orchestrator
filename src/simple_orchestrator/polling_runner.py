@@ -1,9 +1,13 @@
-import threading
-import time
+from typing import TYPE_CHECKING
 
-from .db.orchestrator import OrchestratorDB
+import anyio
+from anyio import create_task_group
+
 from .logging_config import get_internal_logger
-from .settings import PollingSettings
+
+if TYPE_CHECKING:
+    from .db.orchestrator import OrchestratorDB
+    from .settings import PollingSettings
 
 logger = get_internal_logger(__name__)
 
@@ -12,7 +16,7 @@ class PollingRunner:
     """
     Runs scheduled pollings defined in orchestrator.toml under [[pollings]].
 
-    On start: all pollings fire immediately, then loop every interval_minutes.
+    On start: all pollings fire immediately, then each loops at its interval.
     Deduplication: skips enqueue if identical (agent_id + prompt) is already
     pending or running in the queue.
     """
@@ -21,34 +25,39 @@ class PollingRunner:
         self._db = db
         self._pollings = pollings
         self._running = False
-        self._threads: list[threading.Thread] = []
+        self._stop_event: anyio.Event | None = None
 
-    def start(self) -> None:
-        """Start all polling loops. Blocks until stop() is called. Call from a thread worker."""
+    async def start(self) -> None:
+        """Start all polling loops. Blocks until stop() is called.
+        Call from an async Textual worker — runs in the app's event loop.
+        """
         if not self._pollings:
             return
         self._running = True
+        self._stop_event = anyio.Event()
         logger.info("PollingRunner: starting %d polling(s)", len(self._pollings))
+
         for p in self._pollings:
-            t = threading.Thread(target=self._polling_loop, args=(p,), daemon=True)
-            self._threads.append(t)
-            t.start()
-        # Block until stop() is called
-        while self._running:
-            time.sleep(1)
+            self._fire(p)
+
+        try:
+            async with create_task_group() as tg:
+                for p in self._pollings:
+                    tg.start_soon(self._polling_loop, p)
+        finally:
+            self._stop_event = None
 
     def stop(self) -> None:
         self._running = False
+        if self._stop_event is not None:
+            self._stop_event.set()
 
-    def run_forever(self) -> None:
-        """Alias for start() for backward compat."""
-        self.start()
-
-    def _polling_loop(self, p: PollingSettings) -> None:
-        self._fire(p)
-        while self._running:
-            time.sleep(p.interval_minutes * 60)
-            if self._running:
+    async def _polling_loop(self, p: PollingSettings) -> None:
+        assert self._stop_event is not None
+        while not self._stop_event.is_set():
+            with anyio.move_on_after(p.interval_minutes * 60):
+                await self._stop_event.wait()
+            if not self._stop_event.is_set():
                 self._fire(p)
 
     def _fire(self, p: PollingSettings) -> None:
@@ -61,7 +70,7 @@ class PollingRunner:
                 "polling [%s]: enqueued — %.60s%s",
                 p.agent_id,
                 p.prompt,
-                "..." if len(p.prompt) > 60 else "",
+                "…" if len(p.prompt) > 60 else "",
             )
         except Exception:
             logger.exception("polling [%s]: error during enqueue", p.agent_id)

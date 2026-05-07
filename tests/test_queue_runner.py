@@ -276,10 +276,10 @@ class SlowVendor(FakeVendor):
     """Vendor that hangs indefinitely until cancelled."""
 
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
-        import asyncio
+        import anyio
 
         self.executed_prompts.append(config.prompt)
-        await asyncio.sleep(9999)
+        await anyio.sleep(9999)
 
 
 def test_process_times_out_and_marks_failed(orch_db):

@@ -164,9 +164,11 @@ def test_run_session_passes_gpt41_model(history_db):
 
 def test_full_run_sync_flow_with_gpt41(history_db):
     """
-    Full flow: run_sync() -> _run_session() -> copilot session created with gpt-4.1
+    Full flow: run() -> _run_session() -> copilot session created with gpt-4.1
     -> DB record updated -> returns completed status.
     """
+    import anyio
+
     copilot_session = _make_copilot_session("copilot-session-xyz")
     client = _make_copilot_client(copilot_session)
 
@@ -174,7 +176,7 @@ def test_full_run_sync_flow_with_gpt41(history_db):
     config = SessionConfig(prompt="write tests", model="gpt-4.1", workdir="/tmp/test")
 
     with patch("simple_orchestrator.vendors.github_copilot.CopilotClient", return_value=client):
-        session_id, final_status = vendor.run_sync(config)
+        session_id, final_status = anyio.run(vendor.run, config)
 
     assert final_status == "completed"
 

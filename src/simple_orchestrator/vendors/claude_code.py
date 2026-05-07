@@ -1,5 +1,4 @@
-from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from claude_agent_sdk import query
 from claude_agent_sdk.types import (
@@ -12,14 +11,18 @@ from claude_agent_sdk.types import (
 )
 from ulid import ULID
 
-from simple_orchestrator.db.history import SessionHistoryDB
 from simple_orchestrator.logging_config import get_vendor_logger
-from simple_orchestrator.models.agent import AgentConfig
 from simple_orchestrator.models.mcp import McpConfig, McpHttpConfig, McpLocalConfig, McpSseConfig, McpStdioConfig
 from simple_orchestrator.models.model import ModelInfo
-from simple_orchestrator.models.session import SessionConfig
-from simple_orchestrator.models.skill import SkillConfig
 from simple_orchestrator.vendors.base import BaseVendor
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from simple_orchestrator.db.history import SessionHistoryDB
+    from simple_orchestrator.models.agent import AgentConfig
+    from simple_orchestrator.models.session import SessionConfig
+    from simple_orchestrator.models.skill import SkillConfig
 
 logger = get_vendor_logger(__name__)
 

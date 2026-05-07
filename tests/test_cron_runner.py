@@ -1,9 +1,8 @@
 """Integration tests for CronRunner."""
 
-import threading
-import time
 from datetime import UTC, datetime, timedelta
 
+import anyio
 import pytest
 
 from simple_orchestrator.cron_runner import CronRunner, _cron_key
@@ -95,12 +94,13 @@ def test_start_stop_lifecycle(db):
     settings = _make_settings()  # no crons, so no enqueue activity
     runner = CronRunner(db, settings=settings, check_interval=0.05)
 
-    t = threading.Thread(target=runner.start, daemon=True)
-    t.start()
-    assert runner._running is True
-    time.sleep(0.1)
-    runner.stop()
-    t.join(timeout=1.0)
+    async def run_and_stop() -> None:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(runner.start)
+            await anyio.sleep(0.1)
+            runner.stop()
+
+    anyio.run(run_and_stop)
     assert runner._running is False
 
 

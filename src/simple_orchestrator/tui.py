@@ -19,7 +19,6 @@ automatically when the TUI is started.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -977,24 +976,24 @@ class OrchestratorTUI(App[None]):
         if self._poller:
             self._poller.stop()
 
-    @work(thread=True, name="queue-runner", exclusive=True)
-    def _run_queue_worker(self) -> None:
+    @work(name="queue-runner", exclusive=True)
+    async def _run_queue_worker(self) -> None:
         if self._runner:
-            self._runner.start()
+            await self._runner.start()
 
-    @work(thread=True, name="cron-runner", exclusive=True)
-    def _run_cron_worker(self) -> None:
+    @work(name="cron-runner", exclusive=True)
+    async def _run_cron_worker(self) -> None:
         if self._cron_runner:
-            self._cron_runner.start()
+            await self._cron_runner.start()
 
-    @work(thread=True, name="polling-runner", exclusive=True)
-    def _run_polling_worker(self) -> None:
+    @work(name="polling-runner", exclusive=True)
+    async def _run_polling_worker(self) -> None:
         if self._poller:
-            self._poller.start()
+            await self._poller.start()
 
-    @work(thread=True, name="mcp-server", exclusive=True)
-    def _run_mcp_server(self) -> None:
-        asyncio.run(serve_sse_async(self._settings.mcp_server_host, self._settings.mcp_server_port))
+    @work(name="mcp-server", exclusive=True)
+    async def _run_mcp_server(self) -> None:
+        await serve_sse_async(self._settings.mcp_server_host, self._settings.mcp_server_port)
 
     def action_refresh(self) -> None:
         self._load_data()

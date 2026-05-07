@@ -1,10 +1,12 @@
 import sqlite3
 import threading
 from datetime import datetime
-from pathlib import Path
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from simple_orchestrator.models.session import SessionRecord
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class SessionHistoryDB:

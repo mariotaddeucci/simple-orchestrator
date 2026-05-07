@@ -1,21 +1,24 @@
-import concurrent.futures
 import contextlib
 import fnmatch
 import shutil
 import tempfile
-import threading
-import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .db.orchestrator import OrchestratorDB
+import anyio
+from anyio import CapacityLimiter, create_task_group
+
 from .logging_config import get_internal_logger
-from .models.queue_item import QueueItem
 from .models.session import SessionConfig
 from .models.skill import SkillConfig
 from .settings import AgentSettings, OrchestratorSettings
-from .vendors.base import BaseVendor
+
+if TYPE_CHECKING:
+    from .db.orchestrator import OrchestratorDB
+    from .models.queue_item import QueueItem
+    from .vendors.base import BaseVendor
 
 logger = get_internal_logger(__name__)
 
@@ -36,7 +39,15 @@ class _AgentInfo:
 class QueueRunner:
     """
     Processes queue items with bounded parallelism and per-workdir exclusion.
-    Runs synchronously in a thread worker. Uses ThreadPoolExecutor for concurrent dispatch.
+
+    Uses anyio task groups for structured concurrency — compatible with both
+    asyncio (Textual) and trio backends. DB operations remain synchronous
+    (sqlite3); only vendor execution is async.
+
+    Concurrency rules:
+      - At most `settings.max_active_sessions` items run simultaneously (CapacityLimiter).
+      - Items sharing the same workdir are serialised (per-dir anyio.Lock).
+      - Different workdirs run freely within the capacity limit.
     """
 
     def __init__(
@@ -51,90 +62,117 @@ class QueueRunner:
         self._settings = settings or OrchestratorSettings()
         self._poll_interval = poll_interval
         self._running = False
-        self._workdir_locks: dict[str, threading.Lock] = {}
-        self._workdir_locks_mutex = threading.Lock()
+        # Workdir locks are created lazily inside async context (anyio.Lock).
+        self._workdir_locks: dict[str, anyio.abc.Lock] = {}
+        # Stop event is created in start() when an event loop is available.
+        self._stop_event: anyio.Event | None = None
 
     @property
     def active_count(self) -> int:
         return len(self._db.list_queue(status="running"))
 
-    def start(self) -> None:
-        """Start queue processing loop. Blocks until stop() is called. Call from a thread worker."""
+    # ── lifecycle ─────────────────────────────────────────────────────────────
+
+    async def start(self) -> None:
+        """Start queue processing. Blocks until stop() is called.
+        Call from an async Textual worker — runs in the app's event loop.
+        """
         if self._running:
             return
         self._running = True
         self._resume_zombie_sessions()
-        self._loop()
+        await self._loop_async()
 
     def stop(self) -> None:
+        """Signal the queue loop to exit. In-flight tasks complete before exit."""
         self._running = False
+        if self._stop_event is not None:
+            self._stop_event.set()
 
     def run_until_empty(self) -> None:
-        """Drain the queue synchronously. Used in tests."""
-        self._resume_zombie_sessions()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self._settings.max_active_sessions) as executor:
-            futures: set[concurrent.futures.Future] = set()
-            while True:
-                done = {f for f in futures if f.done()}
-                for f in done:
-                    exc = f.exception()
-                    if exc:
-                        logger.exception("dispatch error", exc_info=exc)
-                futures -= done
+        """Drain the queue synchronously. Used in tests and headless CLI runs."""
+        anyio.run(self._run_until_empty_async)
 
-                if len(futures) < self._settings.max_active_sessions:
-                    item = self._db.dequeue_next()
-                    if item:
-                        futures.add(executor.submit(self._dispatch, item))
-                        continue
-
-                if not futures:
-                    break
-
-                concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+    # ── zombie resume ─────────────────────────────────────────────────────────
 
     def _resume_zombie_sessions(self) -> None:
         zombie_items = self._db.list_queue(status="running")
         if not zombie_items:
             return
-        logger.info("QueueRunner: found %d zombie session(s), re-queuing...", len(zombie_items))
+        logger.info("QueueRunner: found %d zombie session(s), re-queuing…", len(zombie_items))
         for item in zombie_items:
             self._db.update_queue_item(item.id, status="pending")
 
-    def _loop(self) -> None:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self._settings.max_active_sessions) as executor:
-            futures: set[concurrent.futures.Future] = set()
-            while self._running:
-                done = {f for f in futures if f.done()}
-                for f in done:
-                    exc = f.exception()
-                    if exc:
-                        logger.exception("dispatch error", exc_info=exc)
-                futures -= done
+    # ── async loops ───────────────────────────────────────────────────────────
 
-                if len(futures) < self._settings.max_active_sessions:
+    async def _loop_async(self) -> None:
+        """Main polling loop. Dispatches items until stop() is called."""
+        limiter = CapacityLimiter(self._settings.max_active_sessions)
+        self._stop_event = anyio.Event()
+        active = 0
+
+        try:
+            async with create_task_group() as tg:
+                while not self._stop_event.is_set():
                     item = self._db.dequeue_next()
                     if item:
                         logger.info("QueueRunner: dequeued item id=%s agent_id=%s", item.id, item.agent_id)
-                        futures.add(executor.submit(self._dispatch, item))
-                        continue
+                        active += 1
 
-                time.sleep(self._poll_interval)
+                        async def _run(it: QueueItem = item) -> None:
+                            nonlocal active
+                            try:
+                                await self._dispatch_async(it, limiter)
+                            finally:
+                                active -= 1
 
-    def _get_workdir_lock(self, workdir: str) -> threading.Lock:
-        with self._workdir_locks_mutex:
-            if workdir not in self._workdir_locks:
-                self._workdir_locks[workdir] = threading.Lock()
-            return self._workdir_locks[workdir]
+                        tg.start_soon(_run)
+                    else:
+                        # Wait for stop signal or poll interval, whichever comes first.
+                        with anyio.move_on_after(self._poll_interval):
+                            await self._stop_event.wait()
+                # Task group waits for all in-flight dispatches before exiting.
+        finally:
+            self._stop_event = None
 
-    def _dispatch(self, item: QueueItem) -> None:
-        logger.info("QueueRunner._dispatch: item id=%s agent_id=%s", item.id, item.agent_id)
+    async def _run_until_empty_async(self) -> None:
+        """Drain queue: processes all pending items including dependency chains."""
+        self._resume_zombie_sessions()
+        limiter = CapacityLimiter(self._settings.max_active_sessions)
+        active = 0
+
+        async with create_task_group() as tg:
+            while True:
+                item = self._db.dequeue_next()
+                if item:
+                    active += 1
+
+                    async def _run(it: QueueItem = item) -> None:
+                        nonlocal active
+                        try:
+                            await self._dispatch_async(it, limiter)
+                        finally:
+                            active -= 1
+
+                    tg.start_soon(_run)
+                elif active == 0:
+                    break
+                else:
+                    # Tasks still running — wait briefly for deps to resolve.
+                    await anyio.sleep(0.05)
+
+    # ── dispatch & execution ──────────────────────────────────────────────────
+
+    async def _dispatch_async(self, item: QueueItem, limiter: CapacityLimiter) -> None:
         info = self._resolve_agent(item.agent_id)
         workdir = item.workdir or (info.workdir if info else None) or item.id
-        with self._get_workdir_lock(workdir):
-            self._process(item, info)
+        async with limiter:
+            if workdir not in self._workdir_locks:
+                self._workdir_locks[workdir] = anyio.Lock()
+            async with self._workdir_locks[workdir]:
+                await self._process_async(item, info)
 
-    def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
+    async def _process_async(self, item: QueueItem, info: _AgentInfo | None) -> None:
         if not info:
             logger.error("queue %s: agent '%s' not found in settings", item.id, item.agent_id)
             self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
@@ -152,7 +190,7 @@ class QueueRunner:
         filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
         try:
             config = self._build_session_config(item, info, extra_skills=filtered_skills)
-            session_id, final_status = vendor.run_sync(config, timeout_minutes=effective_timeout)
+            session_id, final_status = await vendor.run(config, timeout_minutes=effective_timeout)
             self._db.update_queue_item(item.id, status=final_status, session_id=session_id, ended_at=datetime.now(UTC))
             logger.info("queue %s [%s] -> %s", item.id, info.label, final_status)
             self._cleanup_if_completed(final_status)
@@ -162,6 +200,12 @@ class QueueRunner:
         finally:
             if tmp_skills_dir:
                 shutil.rmtree(tmp_skills_dir, ignore_errors=True)
+
+    def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
+        """Sync wrapper around _process_async. Used directly in tests."""
+        anyio.run(self._process_async, item, info)
+
+    # ── helpers ───────────────────────────────────────────────────────────────
 
     def _cleanup_if_completed(self, queue_status: str) -> None:
         if queue_status == "completed":
@@ -251,5 +295,4 @@ class QueueRunner:
                 timeout_minutes=agent_s.task_timeout_minutes,
                 skill_globs=list(agent_s.skill_globs),
             )
-
         return None
