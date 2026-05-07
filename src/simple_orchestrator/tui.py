@@ -781,6 +781,14 @@ class OrchestratorTUI(App[None]):
             item.status,
             item.workdir,
         )
+        # Show notification to user
+        agent_name = agent.nickname or agent.name
+        self.notify(
+            f"✓ Task enqueued for {agent_name}",
+            title="Task Added",
+            severity="information",
+            timeout=3,
+        )
         await self._load_data()
         log.info("TUI enqueue_prompt: data reloaded")
 
