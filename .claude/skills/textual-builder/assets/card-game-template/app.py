@@ -12,6 +12,9 @@ Includes:
 Customize this template for your specific card game rules.
 """
 
+import secrets
+from typing import ClassVar
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical
@@ -76,14 +79,15 @@ class Card(Widget):
             super().__init__()
             self.card = card
 
-    face_up = reactive(True)
-    selectable = reactive(True)
+    face_up: bool = reactive(init=True)
+    selectable: bool = reactive(init=True)
 
     def __init__(
         self,
         rank: str,
         suit: str,
         value: int = 0,
+        *,
         face_up: bool = True,
         card_id: str | None = None,
     ) -> None:
@@ -100,7 +104,7 @@ class Card(Widget):
         else:
             yield Label("🂠", classes="card-back")
 
-    def watch_face_up(self, face_up: bool) -> None:
+    def watch_face_up(self, *, face_up: bool) -> None:
         """Update display when card is flipped."""
         if face_up:
             self.remove_class("face-down")
@@ -202,7 +206,7 @@ class CardGameApp(App):
 
     CSS_PATH = "app.tcss"
 
-    BINDINGS = [
+    BINDINGS: ClassVar = [
         ("q", "quit", "Quit"),
         ("n", "next_turn", "Next Turn"),
         ("d", "draw_card", "Draw Card"),
@@ -294,13 +298,13 @@ class CardGameApp(App):
     def action_draw_card(self) -> None:
         """Draw a card (example)."""
         player_hand = self.query_one("#player-hand", Hand)
-        # Example: Draw a random card
-        import random
-
+        # Example: Draw a random card (for demo purposes, using secrets for selection)
         suits = ["♠", "♥", "♦", "♣"]
         ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 
-        card = Card(random.choice(ranks), random.choice(suits), face_up=True)
+        rank = secrets.choice(ranks)
+        suit = secrets.choice(suits)
+        card = Card(rank, suit, face_up=True)
         player_hand.add_card(card)
         self.notify("Drew a card")
 

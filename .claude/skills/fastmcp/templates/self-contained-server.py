@@ -368,7 +368,7 @@ async def health_check() -> dict:
             if client:
                 response = await client.get("/health", timeout=5)
                 checks["api"] = response.status_code == 200
-        except:
+        except Exception:
             checks["api"] = False
     else:
         checks["api"] = None  # Not configured
