@@ -167,10 +167,10 @@ class ScheduledEventCard(Static):
     DEFAULT_CSS = """
     ScheduledEventCard {
         height: auto;
-        border: round #bd93f9;
+        border: solid #bd93f9;
         background: #44475a;
         padding: 1 2;
-        margin: 1 0;
+        margin: 1 1;
     }
 
     ScheduledEventCard .event-type {
@@ -214,14 +214,14 @@ class AgentCard(Static):
     DEFAULT_CSS = """
     AgentCard {
         height: auto;
-        border: round #bd93f9;
+        border: solid #bd93f9;
         background: #44475a;
         padding: 1 2;
-        margin: 1 0;
+        margin: 1 1;
     }
 
     AgentCard:hover {
-        border: round #50fa7b;
+        border: solid #50fa7b;
         background: #6272a4;
     }
 
@@ -272,24 +272,27 @@ class DirectoryBrowser(ModalScreen[str | None]):
     }
 
     #browser-dialog {
-        width: 70;
-        height: 30;
-        border: thick #bd93f9;
+        width: 80;
+        height: 35;
+        border: solid #bd93f9;
         background: #282a36;
-        padding: 1 2;
+        padding: 2;
     }
 
     #browser-dialog .dialog-title {
         text-style: bold;
         color: #ff79c6;
         text-align: center;
-        margin-bottom: 1;
+        margin-bottom: 2;
+        height: 3;
     }
 
     #directory-tree {
         height: 1fr;
-        margin-bottom: 1;
+        margin-bottom: 2;
         background: #44475a;
+        border: solid #6272a4;
+        padding: 1;
     }
 
     #browser-button-container {
@@ -336,37 +339,42 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     }
 
     #prompt-dialog {
-        width: 80;
-        height: 30;
-        border: thick #bd93f9;
+        width: 90;
+        height: 40;
+        border: solid #bd93f9;
         background: #282a36;
-        padding: 1 2;
+        padding: 2;
     }
 
     #prompt-dialog .dialog-title {
         text-style: bold;
         color: #ff79c6;
         text-align: center;
-        margin-bottom: 1;
+        margin-bottom: 2;
+        height: 3;
     }
 
     #prompt-input {
-        height: 12;
-        margin-bottom: 1;
+        height: 15;
+        margin-bottom: 2;
         background: #44475a;
-        border: round #6272a4;
+        border: solid #6272a4;
+        padding: 1;
     }
 
     #workdir-label {
-        margin-bottom: 0;
-        margin-top: 1;
+        margin-bottom: 1;
+        margin-top: 2;
         color: #f8f8f2;
+        height: 2;
     }
 
     #workdir-input {
-        margin-bottom: 1;
+        margin-bottom: 2;
         background: #44475a;
-        border: round #6272a4;
+        border: solid #6272a4;
+        padding: 0 1;
+        height: 3;
     }
 
     #button-container {
@@ -537,33 +545,44 @@ class OrchestratorTUI(App[None]):
 
     /* ── Sidebar for agents and scheduled events ───────────── */
     #sidebar {
-        width: 30;
+        width: 35;
         border-right: solid #bd93f9;
         background: #282a36;
+        padding: 1;
     }
 
     #sidebar-agents {
         height: auto;
         max-height: 50%;
         background: #282a36;
+        border: solid #6272a4;
+        padding: 1;
+        margin: 1 0;
     }
 
     #sidebar-events {
         height: auto;
         max-height: 50%;
         background: #282a36;
+        border: solid #6272a4;
+        padding: 1;
+        margin: 1 0;
     }
 
     .section-label.agents {
         background: #bd93f9;
         color: #282a36;
         text-style: bold;
+        padding: 1 2;
+        height: 3;
     }
 
     .section-label.events {
         background: #ffb86c;
         color: #282a36;
         text-style: bold;
+        padding: 1 2;
+        height: 3;
     }
 
     /* ── Main content area ────────────────────────────────── */
@@ -571,30 +590,38 @@ class OrchestratorTUI(App[None]):
         width: 1fr;
         layout: vertical;
         background: #282a36;
+        padding: 1;
     }
 
     /* ── Three-column queue area ────────────────────────────── */
     #columns {
         height: 3fr;
+        margin-bottom: 1;
     }
 
     .col {
         width: 1fr;
         layout: vertical;
-        border-right: solid #44475a;
+        border: solid #44475a;
+        margin: 0 1;
+        padding: 0;
+    }
+
+    .col:first-of-type {
+        margin-left: 0;
     }
 
     .col:last-of-type {
-        border-right: none;
+        margin-right: 0;
     }
 
     /* ── Section label strip ────────────────────────────────── */
     .section-label {
         background: #6272a4;
         color: #f8f8f2;
-        padding: 0 2;
+        padding: 1 2;
         text-style: bold;
-        height: 1;
+        height: 3;
     }
 
     .section-label.pending {
@@ -621,14 +648,17 @@ class OrchestratorTUI(App[None]):
         height: 1fr;
         border: none;
         background: #282a36;
+        padding: 1;
     }
 
     /* ── Log panel ──────────────────────────────────────────── */
     #log-panel {
         height: 2fr;
-        border: none;
+        border: solid #6272a4;
         background: #282a36;
         color: #f8f8f2;
+        padding: 1;
+        margin-top: 1;
     }
 
     /* ── Header and Footer styling ──────────────────────────── */
@@ -646,7 +676,9 @@ class OrchestratorTUI(App[None]):
     Button {
         background: #44475a;
         color: #f8f8f2;
-        border: round #bd93f9;
+        border: solid #bd93f9;
+        min-width: 12;
+        height: 3;
     }
 
     Button:hover {
@@ -657,7 +689,7 @@ class OrchestratorTUI(App[None]):
     Button.-primary {
         background: #50fa7b;
         color: #282a36;
-        border: round #50fa7b;
+        border: solid #50fa7b;
     }
 
     Button.-primary:hover {
@@ -748,6 +780,14 @@ class OrchestratorTUI(App[None]):
             item.id,
             item.status,
             item.workdir,
+        )
+        # Show notification to user
+        agent_name = agent.nickname or agent.name
+        self.notify(
+            f"✓ Task enqueued for {agent_name}",
+            title="Task Added",
+            severity="information",
+            timeout=3,
         )
         await self._load_data()
         log.info("TUI enqueue_prompt: data reloaded")
