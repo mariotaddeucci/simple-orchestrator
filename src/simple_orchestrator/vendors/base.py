@@ -9,8 +9,11 @@ from typing import Any
 from ulid import ULID
 
 from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.logging_config import get_vendor_logger
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.session import SessionConfig, SessionRecord
+
+logger = get_vendor_logger(__name__)
 
 
 class BaseVendor(ABC):
@@ -28,6 +31,8 @@ class BaseVendor(ABC):
     async def run(self, config: SessionConfig) -> str:
         session_id = str(ULID())
         workdir = config.workdir if config.workdir is not None else tempfile.mkdtemp()
+        logger.info("Starting vendor session session_id=%s vendor=%s workdir=%s", session_id, self.vendor_name, workdir)
+        logger.debug("Session config: model=%s max_turns=%s", config.model, config.max_turns)
         if workdir != config.workdir:
             config = config.model_copy(update={"workdir": workdir})
         record = SessionRecord(
@@ -46,16 +51,20 @@ class BaseVendor(ABC):
         )
         self._active_tasks[session_id] = task
         self._attach_on_done(session_id, task)
+        logger.debug("Vendor session task created for session_id=%s", session_id)
         return session_id
 
     async def kill(self, session_id: str) -> None:
+        logger.info("Killing vendor session session_id=%s vendor=%s", session_id, self.vendor_name)
         task = self._active_tasks.pop(session_id, None)
         if task and not task.done():
+            logger.debug("Cancelling active task for session_id=%s", session_id)
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
         await self._vendor_kill(session_id)
         await self._db.update_status(session_id, "killed", datetime.now(UTC))
+        logger.info("Vendor session killed session_id=%s", session_id)
 
     @abstractmethod
     async def list_models(self) -> list[ModelInfo]:
@@ -86,6 +95,8 @@ class BaseVendor(ABC):
 
         Returns the session_id being resumed.
         """
+        logger.info("Resuming vendor session session_id=%s vendor=%s", session_id, self.vendor_name)
+        logger.debug("Resume config: model=%s workdir=%s", config.model, config.workdir)
         await self._db.update_status(session_id, "running")
 
         task = asyncio.create_task(
@@ -124,7 +135,12 @@ class BaseVendor(ABC):
     async def _on_done(self, session_id: str, task: asyncio.Task[None]) -> None:
         self._active_tasks.pop(session_id, None)
         if task.cancelled():
+            logger.debug("Session task cancelled session_id=%s", session_id)
             return
         exc = task.exception()
         status = "failed" if exc else "completed"
+        if exc:
+            logger.error("Session failed with exception session_id=%s vendor=%s: %s", session_id, self.vendor_name, exc)
+        else:
+            logger.info("Session completed successfully session_id=%s vendor=%s", session_id, self.vendor_name)
         await self._db.update_status(session_id, status, datetime.now(UTC))

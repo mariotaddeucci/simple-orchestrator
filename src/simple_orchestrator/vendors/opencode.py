@@ -5,9 +5,12 @@ from typing import Any
 from opencode_ai import AsyncOpencode
 
 from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.logging_config import get_vendor_logger
 from simple_orchestrator.models.model import ModelInfo
 from simple_orchestrator.models.session import SessionConfig
 from simple_orchestrator.vendors.base import BaseVendor
+
+logger = get_vendor_logger(__name__)
 
 
 class OpenCodeVendor(BaseVendor):
@@ -63,8 +66,11 @@ class OpenCodeVendor(BaseVendor):
         return _stream()
 
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
+        logger.info("OpenCode: starting session session_id=%s", session_id)
+        logger.debug("OpenCode config: provider=%s model=%s", self._provider_id, config.model or self._model_id)
         async with AsyncOpencode(base_url=self._base_url) as client:
             vendor_session = await client.session.create()
+            logger.debug("OpenCode vendor session created vendor_session_id=%s", vendor_session.id)
             await self._db.update_status(session_id, "running", vendor_session_id=vendor_session.id)
             self._active_handles[session_id] = (client, vendor_session.id)
 
@@ -76,6 +82,7 @@ class OpenCodeVendor(BaseVendor):
                 parts=[{"type": "text", "text": config.prompt}],
             )
             self._active_handles.pop(session_id, None)
+            logger.info("OpenCode: session completed session_id=%s", session_id)
 
     async def _vendor_kill(self, session_id: str) -> None:
         handle = self._active_handles.pop(session_id, None)

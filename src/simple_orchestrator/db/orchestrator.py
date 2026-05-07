@@ -1,6 +1,5 @@
 import contextlib
 import json
-import logging
 import re
 import sqlite3
 import subprocess
@@ -12,10 +11,11 @@ import aiosqlite
 from ulid import ULID
 
 from simple_orchestrator.db.history import SessionHistoryDB
+from simple_orchestrator.logging_config import get_internal_logger
 from simple_orchestrator.models.memory_record import MemoryRecord
 from simple_orchestrator.models.queue_item import QueueItem
 
-logger = logging.getLogger(__name__)
+logger = get_internal_logger(__name__)
 
 
 def _new_ulid() -> str:

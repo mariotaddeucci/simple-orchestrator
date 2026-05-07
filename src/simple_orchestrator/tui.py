@@ -35,11 +35,12 @@ from textual.widgets import Button, DataTable, DirectoryTree, Footer, Header, In
 
 from .cron_runner import CronRunner
 from .db.orchestrator import OrchestratorDB
+from .logging_config import get_internal_logger, setup_logging
 from .mcp_server import serve_sse_async
 from .models.agent_record import AgentRecord
 from .polling_runner import PollingRunner
 from .queue_runner import QueueRunner
-from .settings import OrchestratorSettings, setup_logging
+from .settings import OrchestratorSettings
 from .vendors import ClaudeCodeVendor
 
 if TYPE_CHECKING:
@@ -869,10 +870,10 @@ async def run_tui() -> None:
     """Open the DB connection, start background processes, and launch the TUI."""
     settings = OrchestratorSettings()
     # Disable console logging for TUI to avoid interfering with display
-    setup_logging(settings, enable_console=False)
+    setup_logging(settings.logs_dir, settings.log_level, enable_console=False)
     log_file = settings.logs_dir / "orchestrator.log"
 
-    log = logging.getLogger(__name__)
+    log = get_internal_logger(__name__)
     log.info("Starting TUI with background processes")
 
     async with OrchestratorDB(settings.db_path) as db:
