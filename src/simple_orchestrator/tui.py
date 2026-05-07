@@ -40,6 +40,7 @@ from textual.widgets import (
     Input,
     Label,
     OptionList,
+    Select,
     SelectionList,
     Static,
     TextArea,
@@ -813,24 +814,24 @@ class OrchestratorTUI(App[None]):
         height: auto;
         layout: horizontal;
         margin-bottom: 1;
+        align: left middle;
+    }
+
+    #log-level-label {
+        width: auto;
+        margin-right: 1;
+        color: #8be9fd;
     }
 
     #log-level-selector {
-        width: 20;
-        height: 7;
+        width: 15;
+        height: 3;
+        dock: right;
+    }
+
+    #log-level-selector Select {
         background: #44475a;
         border: round #6272a4;
-        margin-left: 2;
-    }
-
-    #log-level-selector > .option-list--option {
-        color: #f8f8f2;
-        padding: 0 1;
-    }
-
-    #log-level-selector > .option-list--option-highlighted {
-        background: #6272a4;
-        color: #50fa7b;
     }
 
     #log-display {
@@ -937,9 +938,12 @@ class OrchestratorTUI(App[None]):
             with Container(id="log-panel"):
                 with Horizontal(id="log-header"):
                     yield Label("📋  LOGS", classes="section-label logs")
-                    yield OptionList(
-                        *[Option(level, id=f"log-level-{level}") for level in _LOG_LEVELS],
+                    yield Label("Level:", id="log-level-label")
+                    yield Select(
+                        [(level, level) for level in _LOG_LEVELS],
+                        value="INFO",
                         id="log-level-selector",
+                        allow_blank=False,
                     )
                 yield DataTable(id="log-display", show_cursor=False, zebra_stripes=True)
 
@@ -952,14 +956,6 @@ class OrchestratorTUI(App[None]):
         log_table.add_column("Timestamp", width=20)
         log_table.add_column("Logger", width=35)
         log_table.add_column("Message")
-
-        # Set initial log level selection
-        log_selector = self.query_one("#log-level-selector", OptionList)
-        # Find and highlight INFO option
-        for idx, option in enumerate(log_selector._options):
-            if option.id == "log-level-INFO":
-                log_selector.highlighted = idx
-                break
 
         self.set_interval(_REFRESH_INTERVAL, self._do_refresh)
         # Kick off an immediate refresh without blocking on_mount
@@ -1021,11 +1017,10 @@ class OrchestratorTUI(App[None]):
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+    def on_select_changed(self, event: Select.Changed) -> None:
         """Handle log level selection."""
-        if event.option_list.id == "log-level-selector":
-            # Extract level from option ID (e.g., "log-level-DEBUG" -> "DEBUG")
-            level = event.option.id.replace("log-level-", "") if event.option.id else "INFO"
+        if event.select.id == "log-level-selector":
+            level = str(event.value)
             self._selected_log_level = level
             self._refresh_log_panel()
 
