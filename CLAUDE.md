@@ -34,6 +34,18 @@ uv run ruff format .            # format code
 uv run pyrefly check            # static type checking
 ```
 
+### Tests
+
+```bash
+uv run pytest                                        # unit tests only (integration skipped by default)
+uv run pytest -m integration                         # vendor integration tests (requires auth)
+uv run pytest -m integration -k copilot              # only copilot integration tests
+uv run pytest -m integration -k claude               # only claude integration tests
+uv run pytest -m "not integration"                   # explicit unit-only (same as default)
+```
+
+Integration tests require live vendor auth (copilot logged in, claude CLI authenticated, opencode running). They are auto-skipped in CI.
+
 ### Git hooks (prek)
 
 ```bash

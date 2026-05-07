@@ -25,24 +25,68 @@ from simple_orchestrator.vendors.opencode import OpenCodeVendor
 # Availability probes — run once at collection time
 # ---------------------------------------------------------------------------
 
-_COPILOT_AVAILABLE = False
-_CLAUDE_AVAILABLE = False
+_COPILOT_SDK_AVAILABLE = False
+_CLAUDE_SDK_AVAILABLE = False
 _OPENCODE_AVAILABLE = False
 
 with contextlib.suppress(Exception):
     from copilot.client import CopilotClient as _CopilotClient  # noqa: F401
 
-    _COPILOT_AVAILABLE = True
+    _COPILOT_SDK_AVAILABLE = True
 
 with contextlib.suppress(Exception):
     from claude_agent_sdk import query as _claude_query  # noqa: F401
 
-    _CLAUDE_AVAILABLE = True
+    _CLAUDE_SDK_AVAILABLE = True
 
 with contextlib.suppress(Exception):
     from opencode_ai import AsyncOpencode as _AsyncOpencode  # noqa: F401
 
     _OPENCODE_AVAILABLE = True
+
+
+def _copilot_authenticated() -> bool:
+    if not _COPILOT_SDK_AVAILABLE:
+        return False
+
+    async def _probe() -> bool:
+        with contextlib.suppress(Exception):
+            from copilot.client import CopilotClient
+
+            async with CopilotClient() as client:
+                await client.list_models()
+            return True
+        return False
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_probe())
+    finally:
+        loop.close()
+
+
+def _claude_authenticated() -> bool:
+    import os
+    import pathlib
+    import shutil
+
+    if not _CLAUDE_SDK_AVAILABLE:
+        return False
+    if not shutil.which("claude"):
+        return False
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return True
+    # Check for OAuth credential files in ~/.claude/
+    claude_dir = pathlib.Path.home() / ".claude"
+    if claude_dir.exists():
+        for fname in claude_dir.iterdir():
+            if "credential" in fname.name.lower() or fname.suffix == ".json":
+                return True
+    return False
+
+
+_COPILOT_AVAILABLE = _copilot_authenticated()
+_CLAUDE_AVAILABLE = _claude_authenticated()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -99,7 +143,7 @@ async def history_db(tmp_path):
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot SDK not available")
+@pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot not available or not authenticated")
 async def test_copilot_gpt41_model_available():
     """gpt-4.1 must appear in the list_models() response."""
     vendor = GithubCopilotVendor(MagicMock(), model="gpt-4.1")
@@ -109,7 +153,7 @@ async def test_copilot_gpt41_model_available():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot SDK not available")
+@pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot not available or not authenticated")
 async def test_copilot_execute_session_returns_session_id_and_response(history_db):
     """
     execute_session() with gpt-4.1 must yield a session_created event with a
@@ -149,7 +193,7 @@ async def test_copilot_execute_session_returns_session_id_and_response(history_d
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot SDK not available")
+@pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot not available or not authenticated")
 async def test_copilot_run_and_wait_completes_with_gpt41(history_db):
     """
     Full run() → wait() flow with gpt-4.1 must complete:
@@ -176,7 +220,7 @@ async def test_copilot_run_and_wait_completes_with_gpt41(history_db):
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not _CLAUDE_AVAILABLE, reason="claude_agent_sdk not available")
+@pytest.mark.skipif(not _CLAUDE_AVAILABLE, reason="claude not available or not authenticated")
 async def test_claude_code_execute_session_returns_response(history_db):
     """
     execute_session() must yield AssistantMessage events with text content
@@ -206,7 +250,7 @@ async def test_claude_code_execute_session_returns_response(history_db):
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not _CLAUDE_AVAILABLE, reason="claude_agent_sdk not available")
+@pytest.mark.skipif(not _CLAUDE_AVAILABLE, reason="claude not available or not authenticated")
 async def test_claude_code_run_and_wait_completes(history_db):
     """run() → wait() must return a ULID session_id and a completed record."""
     vendor = ClaudeCodeVendor(history_db)
