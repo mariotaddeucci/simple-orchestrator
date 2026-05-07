@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import fnmatch
 import shutil
@@ -6,14 +5,20 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .db.orchestrator import OrchestratorDB
+import anyio
+from anyio import CapacityLimiter, create_task_group
+
 from .logging_config import get_internal_logger
-from .models.queue_item import QueueItem
 from .models.session import SessionConfig
 from .models.skill import SkillConfig
 from .settings import AgentSettings, OrchestratorSettings
-from .vendors.base import BaseVendor
+
+if TYPE_CHECKING:
+    from .db.orchestrator import OrchestratorDB
+    from .models.queue_item import QueueItem
+    from .vendors.base import BaseVendor
 
 logger = get_internal_logger(__name__)
 
@@ -35,13 +40,14 @@ class QueueRunner:
     """
     Processes queue items with bounded parallelism and per-workdir exclusion.
 
-    Agent resolution:
-      - Agents are resolved from settings.agents (TOML configuration only)
+    Uses anyio task groups for structured concurrency — compatible with both
+    asyncio (Textual) and trio backends. DB operations remain synchronous
+    (sqlite3); only vendor execution is async.
 
     Concurrency rules:
-      - At most `settings.max_active_sessions` items run simultaneously.
-      - Items sharing the same workdir are serialised (per-dir asyncio.Lock).
-      - Different workdirs run freely within the semaphore limit.
+      - At most `settings.max_active_sessions` items run simultaneously (CapacityLimiter).
+      - Items sharing the same workdir are serialised (per-dir anyio.Lock).
+      - Different workdirs run freely within the capacity limit.
     """
 
     def __init__(
@@ -55,205 +61,170 @@ class QueueRunner:
         self._vendors = vendors
         self._settings = settings or OrchestratorSettings()
         self._poll_interval = poll_interval
-
-        self._semaphore = asyncio.Semaphore(self._settings.max_active_sessions)
-        self._workdir_locks: dict[str, asyncio.Lock] = {}
-
         self._running = False
-        self._loop_task: asyncio.Task[None] | None = None
-        self._dispatch_tasks: set[asyncio.Task[None]] = set()
+        # Workdir locks are created lazily inside async context (anyio.Lock).
+        self._workdir_locks: dict[str, anyio.abc.Lock] = {}
+        # Stop event is created in start() when an event loop is available.
+        self._stop_event: anyio.Event | None = None
+
+    @property
+    def active_count(self) -> int:
+        return len(self._db.list_queue(status="running"))
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
+        """Start queue processing. Blocks until stop() is called.
+        Call from an async Textual worker — runs in the app's event loop.
+        """
         if self._running:
             return
         self._running = True
-        await self.resume_zombie_sessions()
-        self._loop_task = asyncio.create_task(self._loop(), name="queue-runner")
+        self._resume_zombie_sessions()
+        await self._loop_async()
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        """Signal the queue loop to exit. In-flight tasks complete before exit."""
         self._running = False
-        if self._loop_task and not self._loop_task.done():
-            self._loop_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._loop_task
+        if self._stop_event is not None:
+            self._stop_event.set()
 
-    async def run_forever(self) -> None:
-        """Start the polling loop and block until cancelled."""
-        self._running = True
-        await self.resume_zombie_sessions()
-        await self._loop()
-
-    async def run_until_empty(self) -> None:
-        """Block until there are no more pending items."""
-        await self.resume_zombie_sessions()
-        while True:
-            await self._semaphore.acquire()
-            item = await self._db.dequeue_next()
-            if item:
-                task = asyncio.create_task(self._dispatch(item))
-                self._dispatch_tasks.add(task)
-                task.add_done_callback(self._dispatch_tasks.discard)
-            else:
-                self._semaphore.release()
-                if self._dispatch_tasks:
-                    # Running tasks may complete their dependencies; wait for at least one to
-                    # finish before retrying dequeue so dependent items can be unlocked.
-                    await asyncio.wait(self._dispatch_tasks, return_when=asyncio.FIRST_COMPLETED)
-                else:
-                    break
+    def run_until_empty(self) -> None:
+        """Drain the queue synchronously. Used in tests and headless CLI runs."""
+        anyio.run(self._run_until_empty_async)
 
     # ── zombie resume ─────────────────────────────────────────────────────────
 
-    async def resume_zombie_sessions(self) -> None:
-        """Resume queue items left in 'running' state from a previous run.
-
-        Called automatically on startup (start / run_forever / run_until_empty)
-        so that sessions interrupted by an application restart are continued
-        from where they stopped rather than left as permanent zombies.
-        """
-        zombie_items = await self._db.list_queue(status="running")
+    def _resume_zombie_sessions(self) -> None:
+        zombie_items = self._db.list_queue(status="running")
         if not zombie_items:
             return
-        logger.info("QueueRunner: found %d zombie session(s), resuming…", len(zombie_items))
+        logger.info("QueueRunner: found %d zombie session(s), re-queuing…", len(zombie_items))
         for item in zombie_items:
-            task = asyncio.create_task(self._resume_zombie(item), name=f"resume-{item.id}")
-            self._dispatch_tasks.add(task)
-            task.add_done_callback(self._dispatch_tasks.discard)
-
-    async def _resume_zombie(self, item: QueueItem) -> None:
-        """Acquire a semaphore slot and resume a single zombie queue item."""
-        await self._semaphore.acquire()
-        workdir = item.workdir or item.id
-        try:
-            async with self._workdir_lock(workdir):
-                await self._resume_process(item)
-        finally:
-            self._semaphore.release()
-
-    async def _resume_process(self, item: QueueItem) -> None:
-        info = await self._resolve_agent(item.agent_id)
-        if not info:
-            logger.error("zombie %s: agent '%s' not found in settings", item.id, item.agent_id)
-            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
-            return
-
-        vendor = self._vendors.get(info.vendor)
-        if not vendor:
-            logger.error("zombie %s [%s]: vendor '%s' not registered", item.id, info.label, info.vendor)
-            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
-            return
-
-        filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
-        try:
-            config = self._build_session_config(item, info, extra_skills=filtered_skills)
-            effective_timeout = (
-                info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
-            )
-            try:
-                if item.session_id:
-                    session_id = await vendor.resume(item.session_id, config)
-                else:
-                    session_id = await vendor.run(config)
-                    await self._db.update_queue_item(item.id, status="running", session_id=session_id)
-                queue_status = await self._await_session(
-                    vendor,
-                    session_id,
-                    item,
-                    info,
-                    effective_timeout,
-                    label="zombie",
+            # Clear timestamps and session_id when re-queuing to avoid inconsistent state
+            self._db.update_queue_item(item.id, status="pending", session_id=None, ended_at=None)
+            # Also clear started_at via direct SQL update
+            assert self._db._conn
+            with self._db._lock:
+                self._db._conn.execute(
+                    "UPDATE queue SET started_at = NULL WHERE id = ?",
+                    (item.id,),
                 )
-            except Exception:
-                logger.exception("zombie %s [%s] raised an error", item.id, info.label)
-                queue_status = "failed"
+                self._db._conn.commit()
 
-            await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
-            logger.info("zombie %s [%s] → %s", item.id, info.label, queue_status)
-            await self._cleanup_if_completed(queue_status)
-        finally:
-            if tmp_skills_dir:
-                shutil.rmtree(tmp_skills_dir, ignore_errors=True)
+    # ── async loops ───────────────────────────────────────────────────────────
 
-    # ── internal loop ─────────────────────────────────────────────────────────
+    async def _loop_async(self) -> None:
+        """Main polling loop. Dispatches items until stop() is called."""
+        limiter = CapacityLimiter(self._settings.max_active_sessions)
+        self._stop_event = anyio.Event()
+        active = 0
 
-    async def _loop(self) -> None:
-        while self._running:
-            logger.debug("QueueRunner polling for pending items")
-            await self._semaphore.acquire()
-            item = await self._db.dequeue_next()
-            if item:
-                logger.info("QueueRunner: dequeued item id=%s agent_id=%s", item.id, item.agent_id)
-                logger.debug("Creating dispatch task for item id=%s", item.id)
-                task = asyncio.create_task(self._dispatch(item))
-                self._dispatch_tasks.add(task)
-                task.add_done_callback(self._dispatch_tasks.discard)
-            else:
-                self._semaphore.release()
-                logger.debug("No pending items, sleeping for %.1fs", self._poll_interval)
-                await asyncio.sleep(self._poll_interval)
-
-    async def _dispatch(self, item: QueueItem) -> None:
-        logger.info("QueueRunner._dispatch: starting item id=%s agent_id=%s", item.id, item.agent_id)
-        logger.debug("Resolving agent info for agent_id=%s", item.agent_id)
-        info = await self._resolve_agent(item.agent_id)
-        # Determine the effective workdir for serialisation: item overrides agent.
-        # If neither specifies one, use item.id as a unique key so the task never
-        # blocks other tasks (each temp-dir session is independent).
-        workdir = item.workdir or (info.workdir if info else None) or item.id
-        logger.debug("Effective workdir for item id=%s: %s", item.id, workdir)
         try:
-            logger.debug("Waiting for workdir lock: %s", workdir)
-            async with self._workdir_lock(workdir):
-                logger.info("QueueRunner._dispatch: acquired lock for workdir=%s item id=%s", workdir, item.id)
-                await self._process(item, info)
+            async with create_task_group() as tg:
+                while not self._stop_event.is_set():
+                    item = self._db.dequeue_next()
+                    if item:
+                        logger.info("QueueRunner: dequeued item id=%s agent_id=%s", item.id, item.agent_id)
+                        active += 1
+
+                        async def _run(it: QueueItem = item) -> None:
+                            nonlocal active
+                            try:
+                                await self._dispatch_async(it, limiter)
+                            finally:
+                                active -= 1
+
+                        tg.start_soon(_run)
+                    else:
+                        # Wait for stop signal or poll interval, whichever comes first.
+                        with anyio.move_on_after(self._poll_interval):
+                            await self._stop_event.wait()
+                # Task group waits for all in-flight dispatches before exiting.
         finally:
-            logger.info("QueueRunner._dispatch: released lock for workdir=%s item id=%s", workdir, item.id)
-            logger.debug("Releasing semaphore slot")
-            self._semaphore.release()
+            self._stop_event = None
 
-    # ── execution ─────────────────────────────────────────────────────────────
+    async def _run_until_empty_async(self) -> None:
+        """Drain queue: processes all pending items including dependency chains."""
+        self._resume_zombie_sessions()
+        limiter = CapacityLimiter(self._settings.max_active_sessions)
+        active = 0
 
-    async def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
-        logger.info("QueueRunner._process: processing item id=%s agent_id=%s", item.id, item.agent_id)
+        async with create_task_group() as tg:
+            while True:
+                item = self._db.dequeue_next()
+                if item:
+                    active += 1
+
+                    async def _run(it: QueueItem = item) -> None:
+                        nonlocal active
+                        try:
+                            await self._dispatch_async(it, limiter)
+                        finally:
+                            active -= 1
+
+                    tg.start_soon(_run)
+                elif active == 0:
+                    break
+                else:
+                    # Tasks still running — wait briefly for deps to resolve.
+                    await anyio.sleep(0.05)
+
+    # ── dispatch & execution ──────────────────────────────────────────────────
+
+    async def _dispatch_async(self, item: QueueItem, limiter: CapacityLimiter) -> None:
+        info = self._resolve_agent(item.agent_id)
+        workdir = item.workdir or (info.workdir if info else None) or item.id
+        async with limiter:
+            if workdir not in self._workdir_locks:
+                self._workdir_locks[workdir] = anyio.Lock()
+            async with self._workdir_locks[workdir]:
+                await self._process_async(item, info)
+
+    async def _process_async(self, item: QueueItem, info: _AgentInfo | None) -> None:
         if not info:
             logger.error("queue %s: agent '%s' not found in settings", item.id, item.agent_id)
-            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
+            self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
         vendor = self._vendors.get(info.vendor)
         if not vendor:
             logger.error("queue %s [%s]: vendor '%s' not registered", item.id, info.label, info.vendor)
-            await self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
+            self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
             return
 
-        logger.info("QueueRunner._process: starting vendor session for item id=%s", item.id)
+        effective_timeout = (
+            info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
+        )
         filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
         try:
             config = self._build_session_config(item, info, extra_skills=filtered_skills)
-            effective_timeout = (
-                info.timeout_minutes if info.timeout_minutes is not None else self._settings.task_timeout_minutes
-            )
-            try:
-                session_id = await vendor.run(config)
-                logger.info(
-                    "QueueRunner._process: vendor session started session_id=%s for item id=%s",
-                    session_id,
-                    item.id,
-                )
-                await self._db.update_queue_item(item.id, status="running", session_id=session_id)
-                queue_status = await self._await_session(vendor, session_id, item, info, effective_timeout)
-            except Exception:
-                logger.exception("queue %s [%s] raised an error", item.id, info.label)
-                queue_status = "failed"
-
-            await self._db.update_queue_item(item.id, status=queue_status, ended_at=datetime.now(UTC))
-            logger.info("queue %s [%s] → %s", item.id, info.label, queue_status)
-            await self._cleanup_if_completed(queue_status)
+            session_id, final_status = await vendor.run(config, timeout_minutes=effective_timeout)
+            self._db.update_queue_item(item.id, status=final_status, session_id=session_id, ended_at=datetime.now(UTC))
+            logger.info("queue %s [%s] -> %s", item.id, info.label, final_status)
+            self._cleanup_if_completed(final_status)
+        except Exception:
+            logger.exception("queue %s [%s] raised an error", item.id, info.label)
+            self._db.update_queue_item(item.id, status="failed", ended_at=datetime.now(UTC))
         finally:
             if tmp_skills_dir:
                 shutil.rmtree(tmp_skills_dir, ignore_errors=True)
+
+    def _process(self, item: QueueItem, info: _AgentInfo | None) -> None:
+        """Sync wrapper around _process_async. Used directly in tests."""
+        anyio.run(self._process_async, item, info)
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    def _cleanup_if_completed(self, queue_status: str) -> None:
+        if queue_status == "completed":
+            with contextlib.suppress(Exception):
+                deleted = self._db.cleanup_old_completed_items(
+                    max_items=self._settings.max_completed_items,
+                    max_age_days=self._settings.max_completed_age_days,
+                )
+                if deleted > 0:
+                    logger.debug("Cleanup: removed %d old completed items", deleted)
 
     def _build_session_config(
         self,
@@ -266,8 +237,6 @@ class QueueRunner:
         merged_skills: list = list(self._settings.skills) + list(info.skills)
         if extra_skills:
             merged_skills = merged_skills + extra_skills
-        # item.workdir takes priority over the agent-level default; None means
-        # BaseVendor.run() will create a temporary directory for this session.
         workdir = item.workdir if item.workdir is not None else info.workdir
         return SessionConfig(
             prompt=item.prompt,
@@ -284,24 +253,7 @@ class QueueRunner:
         item: QueueItem,
         info: _AgentInfo,
     ) -> tuple[list[SkillConfig], str | None]:
-        """Filter `.agents/skills/` directories by glob patterns and copy matches to a temp dir.
-
-        Determines the effective workdir from *item* and *info* (same priority as
-        :meth:`_build_session_config`), then scans ``<workdir>/.agents/skills/`` for
-        **subdirectories**.  Each directory whose name matches **any** of the *skill_globs*
-        patterns is copied into a freshly created temporary directory placed inside *workdir*
-        so that skill paths can be expressed as ``./``-relative references.
-
-        Returns a ``(skills, tmp_dir_path)`` tuple.  *skills* is a list of
-        :class:`SkillConfig` objects whose ``path`` is a ``./``-prefixed relative path
-        from the session workdir.  *tmp_dir_path* is the absolute path of the created
-        temporary directory, or ``None`` when no directories matched (and therefore no
-        directory was created).  The caller is responsible for removing *tmp_dir_path*
-        once the session has finished.
-
-        If *skill_globs* is empty, the skills directory does not exist, or no directories
-        match the patterns, ``([], None)`` is returned.
-        """
+        """Filter `.agents/skills/` directories by glob patterns and copy matches to a temp dir."""
         if not skill_globs:
             return [], None
 
@@ -337,9 +289,7 @@ class QueueRunner:
         logger.debug("skill_globs filtered %d skill(s) into %s", len(result), tmp_dir)
         return result, str(tmp_dir)
 
-    # ── agent resolution ──────────────────────────────────────────────────────
-
-    async def _resolve_agent(self, agent_id: str) -> _AgentInfo | None:
+    def _resolve_agent(self, agent_id: str) -> _AgentInfo | None:
         """Resolve agent from TOML settings only."""
         agent_s: AgentSettings | None = self._settings.agents.get(agent_id)
         if agent_s:
@@ -354,51 +304,4 @@ class QueueRunner:
                 timeout_minutes=agent_s.task_timeout_minutes,
                 skill_globs=list(agent_s.skill_globs),
             )
-
         return None
-
-    # ── helpers ───────────────────────────────────────────────────────────────
-
-    async def _cleanup_if_completed(self, queue_status: str) -> None:
-        """Cleanup old completed items if the current item completed successfully."""
-        if queue_status == "completed":
-            try:
-                deleted = await self._db.cleanup_old_completed_items(
-                    max_items=self._settings.max_completed_items,
-                    max_age_days=self._settings.max_completed_age_days,
-                )
-                if deleted > 0:
-                    logger.debug("Cleanup: removed %d old completed items", deleted)
-            except Exception:
-                logger.exception("Failed to cleanup old completed items")
-
-    async def _await_session(
-        self,
-        vendor: BaseVendor,
-        session_id: str,
-        item: QueueItem,
-        info: _AgentInfo,
-        effective_timeout: float,
-        *,
-        label: str = "queue",
-    ) -> str:
-        """Wait for a vendor session to complete, enforcing the timeout. Returns the final queue status."""
-        try:
-            async with asyncio.timeout(effective_timeout * 60):
-                record = await vendor.wait(session_id)
-        except TimeoutError:
-            logger.warning("%s %s [%s] timed out after %.1f minutes", label, item.id, info.label, effective_timeout)
-            await vendor.kill(session_id)
-            return "failed"
-        else:
-            final = record.status if record else "failed"
-            return final if final in ("completed", "failed", "killed") else "failed"
-
-    def _workdir_lock(self, workdir: str) -> asyncio.Lock:
-        if workdir not in self._workdir_locks:
-            self._workdir_locks[workdir] = asyncio.Lock()
-        return self._workdir_locks[workdir]
-
-    @property
-    def active_count(self) -> int:
-        return self._settings.max_active_sessions - self._semaphore._value

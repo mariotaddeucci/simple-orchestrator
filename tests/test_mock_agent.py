@@ -27,7 +27,7 @@ class MockAgent(BaseVendor):
         db: SessionHistoryDB,
         *,
         should_fail: bool = False,
-        delay_seconds: float = 0.1,
+        delay_seconds: float = 0.0,
     ) -> None:
         super().__init__(db)
         self._should_fail = should_fail
@@ -45,7 +45,8 @@ class MockAgent(BaseVendor):
         self.executed_sessions.append((session_id, config.prompt))
 
         # Simulate work being done
-        await asyncio.sleep(self._delay_seconds)
+        if self._delay_seconds > 0:
+            await asyncio.sleep(self._delay_seconds)
         logger.info("MockAgent: session %s work completed", session_id)
 
         if self._should_fail:
@@ -64,7 +65,8 @@ class MockAgent(BaseVendor):
 
         async def _gen() -> AsyncIterator[dict[str, Any]]:
             yield {"type": "start", "prompt": config.prompt}
-            await asyncio.sleep(self._delay_seconds)
+            if self._delay_seconds > 0:
+                await asyncio.sleep(self._delay_seconds)
             if self._should_fail:
                 yield {"type": "error", "message": "MockAgent configured to fail"}
             else:

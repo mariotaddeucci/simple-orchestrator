@@ -42,7 +42,7 @@ class McpLocalConfig(BaseModel):
     import_path: str  # "module.path:attribute"
 
     @model_validator(mode="after")
-    def _validate_import_path(self) -> "McpLocalConfig":
+    def _validate_import_path(self) -> McpLocalConfig:
         if not _IMPORT_PATH_RE.match(self.import_path):
             raise ValueError(
                 f"import_path {self.import_path!r} must be in 'module:attribute' format "

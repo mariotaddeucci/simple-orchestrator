@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from simple_orchestrator.models.session import SessionConfig
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from simple_orchestrator.models.session import SessionConfig
 
 
 class BaseAgentService(ABC):

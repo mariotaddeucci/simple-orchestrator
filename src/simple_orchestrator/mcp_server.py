@@ -65,13 +65,13 @@ def _prompt_description(prompt: str) -> str:
     return ""
 
 
-async def _build_agent_nickname_map() -> dict[str, str | None]:
+def _build_agent_nickname_map() -> dict[str, str | None]:
     """Return a mapping of agent_id -> nickname from config agents only."""
     settings = _get_settings()
     return {aid: a.nickname for aid, a in settings.agents.items()}
 
 
-async def _get_agent_nickname(agent_id: str) -> str | None:
+def _get_agent_nickname(agent_id: str) -> str | None:
     """Return the nickname for a single agent from config only."""
     settings = _get_settings()
     if agent_id in settings.agents:
@@ -136,9 +136,9 @@ async def enqueue_task(
 ) -> str:
     """Add a task to the queue for a specific agent. Returns the task ID and initial status."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        item = await db.enqueue(agent_id, prompt, depends_on=depends_on)
-        agent_nickname = await _get_agent_nickname(agent_id)
+    with OrchestratorDB(settings.db_path) as db:
+        item = db.enqueue(agent_id, prompt, depends_on=depends_on)
+        agent_nickname = _get_agent_nickname(agent_id)
     return json.dumps(
         {
             "task_id": item.id,
@@ -218,12 +218,12 @@ async def enqueue_tasks(
 
     settings = _get_settings()
     enqueued = []
-    async with OrchestratorDB(settings.db_path) as db:
+    with OrchestratorDB(settings.db_path) as db:
         for spec, tid in zip(tasks, task_ids, strict=True):
             # Resolve depends_on: replace aliases with real IDs; pass through bare IDs unchanged.
             resolved_deps = [alias_to_id.get(dep, dep) for dep in spec.depends_on]
 
-            item = await db.enqueue(
+            item = db.enqueue(
                 spec.agent_id,
                 spec.prompt,
                 workdir=spec.workdir,
@@ -253,9 +253,9 @@ async def list_tasks(
 ) -> str:
     """List tasks in the queue. Returns task IDs, statuses, linked session IDs, and timestamps."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        items = await db.list_queue(status=status, agent_id=agent_id)
-        agent_nicknames = await _build_agent_nickname_map()
+    with OrchestratorDB(settings.db_path) as db:
+        items = db.list_queue(status=status, agent_id=agent_id)
+        agent_nicknames = _build_agent_nickname_map()
 
     results = []
     for item in items:
@@ -284,11 +284,11 @@ async def get_task(
 ) -> str:
     """Get full details of a specific task including its complete prompt and linked session ID."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        item = await db.get_queue_item(task_id)
+    with OrchestratorDB(settings.db_path) as db:
+        item = db.get_queue_item(task_id)
         if not item:
             return json.dumps({"error": f"Task {task_id!r} not found"})
-        agent_nickname = await _get_agent_nickname(item.agent_id)
+        agent_nickname = _get_agent_nickname(item.agent_id)
 
     return json.dumps(
         {
@@ -313,12 +313,12 @@ async def cancel_task(
 ) -> str:
     """Cancel a pending task. Has no effect on running, completed, or already-cancelled tasks."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        item_before = await db.get_queue_item(task_id)
+    with OrchestratorDB(settings.db_path) as db:
+        item_before = db.get_queue_item(task_id)
         if not item_before:
             return json.dumps({"error": f"Task {task_id!r} not found"})
-        await db.cancel_queue_item(task_id)
-        item_after = await db.get_queue_item(task_id)
+        db.cancel_queue_item(task_id)
+        item_after = db.get_queue_item(task_id)
 
     return json.dumps(
         {
@@ -336,8 +336,8 @@ async def get_session(
 ) -> str:
     """Get details of the session created for a task. Use the session_id from get_task or list_tasks."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        record = await db.get(session_id)
+    with OrchestratorDB(settings.db_path) as db:
+        record = db.get(session_id)
 
     if not record:
         return json.dumps({"error": f"Session {session_id!r} not found"})
@@ -379,8 +379,8 @@ async def add_task_note(
     The task ID is available in the ORCHESTRATOR_TASK_ID environment variable.
     """
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        found = await db.add_task_note(task_id, note)
+    with OrchestratorDB(settings.db_path) as db:
+        found = db.add_task_note(task_id, note)
     if not found:
         return json.dumps({"error": f"Task {task_id!r} not found"})
     return json.dumps({"task_id": task_id, "note_saved": True})
@@ -409,8 +409,8 @@ async def save_memory(
     Each call creates a new memory entry; use the returned memory_id for later retrieval or deletion.
     """
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        record = await db.save_memory(agent_id, description, content)
+    with OrchestratorDB(settings.db_path) as db:
+        record = db.save_memory(agent_id, description, content)
     return json.dumps(
         {
             "memory_id": record.id,
@@ -427,8 +427,8 @@ async def list_memories(
 ) -> str:
     """List saved memories. Returns memory_id, agent_id, description, and updated_at — no full content."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        records = await db.list_memories(agent_id=agent_id)
+    with OrchestratorDB(settings.db_path) as db:
+        records = db.list_memories(agent_id=agent_id)
     return json.dumps(
         [
             {
@@ -449,8 +449,8 @@ async def get_memory(
 ) -> str:
     """Get the full content of a specific memory entry."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        record = await db.get_memory(memory_id)
+    with OrchestratorDB(settings.db_path) as db:
+        record = db.get_memory(memory_id)
     if not record:
         return json.dumps({"error": f"Memory {memory_id!r} not found"})
     return json.dumps(
@@ -470,8 +470,8 @@ async def delete_memory(
 ) -> str:
     """Delete a specific memory entry by its ID. No-op if not found."""
     settings = _get_settings()
-    async with OrchestratorDB(settings.db_path) as db:
-        deleted = await db.delete_memory(memory_id)
+    with OrchestratorDB(settings.db_path) as db:
+        deleted = db.delete_memory(memory_id)
     return json.dumps({"memory_id": memory_id, "deleted": deleted})
 
 
