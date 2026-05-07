@@ -167,7 +167,7 @@ class ScheduledEventCard(Static):
     DEFAULT_CSS = """
     ScheduledEventCard {
         height: auto;
-        border: solid #bd93f9;
+        border: round #bd93f9;
         background: #44475a;
         padding: 1 2;
         margin: 1 1;
@@ -214,14 +214,14 @@ class AgentCard(Static):
     DEFAULT_CSS = """
     AgentCard {
         height: auto;
-        border: solid #bd93f9;
+        border: round #bd93f9;
         background: #44475a;
         padding: 1 2;
         margin: 1 1;
     }
 
     AgentCard:hover {
-        border: solid #50fa7b;
+        border: round #50fa7b;
         background: #6272a4;
     }
 
@@ -274,7 +274,7 @@ class DirectoryBrowser(ModalScreen[str | None]):
     #browser-dialog {
         width: 80;
         height: 35;
-        border: solid #bd93f9;
+        border: round #bd93f9;
         background: #282a36;
         padding: 2;
     }
@@ -291,7 +291,7 @@ class DirectoryBrowser(ModalScreen[str | None]):
         height: 1fr;
         margin-bottom: 2;
         background: #44475a;
-        border: solid #6272a4;
+        border: round #6272a4;
         padding: 1;
     }
 
@@ -341,7 +341,7 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     #prompt-dialog {
         width: 90;
         height: 40;
-        border: solid #bd93f9;
+        border: round #bd93f9;
         background: #282a36;
         padding: 2;
     }
@@ -358,7 +358,7 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
         height: 15;
         margin-bottom: 2;
         background: #44475a;
-        border: solid #6272a4;
+        border: round #6272a4;
         padding: 1;
     }
 
@@ -372,7 +372,7 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     #workdir-input {
         margin-bottom: 2;
         background: #44475a;
-        border: solid #6272a4;
+        border: round #6272a4;
         padding: 0 1;
         height: 3;
     }
@@ -546,7 +546,7 @@ class OrchestratorTUI(App[None]):
     /* ── Sidebar for agents and scheduled events ───────────── */
     #sidebar {
         width: 35;
-        border-right: solid #bd93f9;
+        border-right: round #bd93f9;
         background: #282a36;
         padding: 1;
     }
@@ -555,7 +555,7 @@ class OrchestratorTUI(App[None]):
         height: auto;
         max-height: 50%;
         background: #282a36;
-        border: solid #6272a4;
+        border: round #6272a4;
         padding: 1;
         margin: 1 0;
     }
@@ -564,25 +564,25 @@ class OrchestratorTUI(App[None]):
         height: auto;
         max-height: 50%;
         background: #282a36;
-        border: solid #6272a4;
+        border: round #6272a4;
         padding: 1;
         margin: 1 0;
     }
 
     .section-label.agents {
-        background: #bd93f9;
-        color: #282a36;
+        background: transparent;
+        color: #bd93f9;
         text-style: bold;
-        padding: 1 2;
-        height: 3;
+        padding: 0 1;
+        height: auto;
     }
 
     .section-label.events {
-        background: #ffb86c;
-        color: #282a36;
+        background: transparent;
+        color: #ffb86c;
         text-style: bold;
-        padding: 1 2;
-        height: 3;
+        padding: 0 1;
+        height: auto;
     }
 
     /* ── Main content area ────────────────────────────────── */
@@ -602,9 +602,9 @@ class OrchestratorTUI(App[None]):
     .col {
         width: 1fr;
         layout: vertical;
-        border: solid #44475a;
+        border: round #44475a;
         margin: 0 1;
-        padding: 0;
+        padding: 1;
     }
 
     .col:first-of-type {
@@ -617,48 +617,55 @@ class OrchestratorTUI(App[None]):
 
     /* ── Section label strip ────────────────────────────────── */
     .section-label {
-        background: #6272a4;
+        background: transparent;
         color: #f8f8f2;
-        padding: 1 2;
+        padding: 0 0 1 0;
         text-style: bold;
-        height: 3;
+        height: auto;
     }
 
     .section-label.pending {
-        background: #f1fa8c;
-        color: #282a36;
+        background: transparent;
+        color: #f1fa8c;
     }
 
     .section-label.running {
-        background: #50fa7b;
-        color: #282a36;
+        background: transparent;
+        color: #50fa7b;
     }
 
     .section-label.finished {
-        background: #44475a;
-        color: #f8f8f2;
+        background: transparent;
+        color: #8be9fd;
     }
 
     .section-label.logs {
-        background: #ff79c6;
-        color: #282a36;
+        background: transparent;
+        color: #ff79c6;
     }
 
     QueueTable {
         height: 1fr;
         border: none;
         background: #282a36;
-        padding: 1;
+        padding: 0;
     }
 
     /* ── Log panel ──────────────────────────────────────────── */
     #log-panel {
         height: 2fr;
-        border: solid #6272a4;
+        border: round #6272a4;
         background: #282a36;
-        color: #f8f8f2;
         padding: 1;
         margin-top: 1;
+    }
+
+    #log-display {
+        height: 1fr;
+        background: #282a36;
+        color: #f8f8f2;
+        border: none;
+        padding: 0;
     }
 
     /* ── Header and Footer styling ──────────────────────────── */
@@ -676,7 +683,7 @@ class OrchestratorTUI(App[None]):
     Button {
         background: #44475a;
         color: #f8f8f2;
-        border: solid #bd93f9;
+        border: round #bd93f9;
         min-width: 12;
         height: 3;
     }
@@ -689,7 +696,7 @@ class OrchestratorTUI(App[None]):
     Button.-primary {
         background: #50fa7b;
         color: #282a36;
-        border: solid #50fa7b;
+        border: round #50fa7b;
     }
 
     Button.-primary:hover {
@@ -732,10 +739,10 @@ class OrchestratorTUI(App[None]):
 
         # Sidebar with agents and scheduled events
         with Vertical(id="sidebar"):
-            yield Label("👥  AGENTS", classes="section-label agents")
-            yield ScrollableContainer(id="sidebar-agents")
-            yield Label("📆  SCHEDULED EVENTS", classes="section-label events")
-            yield ScrollableContainer(id="sidebar-events")
+            with ScrollableContainer(id="sidebar-agents"):
+                yield Label("👥  AGENTS", classes="section-label agents")
+            with ScrollableContainer(id="sidebar-events"):
+                yield Label("📆  SCHEDULED EVENTS", classes="section-label events")
 
         # Main content area
         with Vertical(id="main-content"):
@@ -752,8 +759,9 @@ class OrchestratorTUI(App[None]):
                     yield Label(f"✔   RECENTLY FINISHED (last {_FINISHED_LIMIT})", classes="section-label finished")
                     yield QueueTable("finished", id="finished-table", classes="finished")
 
-            yield Label("📋  LOGS", classes="section-label logs")
-            yield RichLog(id="log-panel", highlight=False, markup=True, wrap=False, auto_scroll=True)
+            with Container(id="log-panel"):
+                yield Label("📋  LOGS", classes="section-label logs")
+                yield RichLog(id="log-display", highlight=False, markup=True, wrap=False, auto_scroll=True)
 
         yield Footer()
 
@@ -846,7 +854,7 @@ class OrchestratorTUI(App[None]):
 
     def _refresh_log_panel(self) -> None:
         """Read the log file tail and repopulate the RichLog widget."""
-        log_panel = self.query_one("#log-panel", RichLog)
+        log_panel = self.query_one("#log-display", RichLog)
         lines = _tail_lines(self._log_file, _LOG_DISPLAY_LINES)
         log_panel.clear()
         for line in lines:
@@ -876,7 +884,7 @@ class OrchestratorTUI(App[None]):
 
         return list(agents_map.values())
 
-    async def _load_data(self) -> None:
+    async def _load_data(self) -> None:  # noqa: C901
         pending = await self._db.list_queue(status="pending")
         running = await self._db.list_queue(status="running")
 
@@ -893,13 +901,19 @@ class OrchestratorTUI(App[None]):
 
         # Update sidebar with agent cards
         sidebar_agents = self.query_one("#sidebar-agents", ScrollableContainer)
-        sidebar_agents.remove_children()
+        # Remove all children except the label (first child)
+        children = list(sidebar_agents.children)
+        for child in children[1:]:  # Keep first child (label), remove rest
+            child.remove()
         for agent in all_agents:
             sidebar_agents.mount(AgentCard(agent))
 
         # Update sidebar with scheduled events
         sidebar_events = self.query_one("#sidebar-events", ScrollableContainer)
-        sidebar_events.remove_children()
+        # Remove all children except the label (first child)
+        children = list(sidebar_events.children)
+        for child in children[1:]:  # Keep first child (label), remove rest
+            child.remove()
 
         # Collect all scheduled events with their next run times
         scheduled_events: list[tuple[datetime, str, str, str]] = []  # (next_run, type, agent_id, schedule)
