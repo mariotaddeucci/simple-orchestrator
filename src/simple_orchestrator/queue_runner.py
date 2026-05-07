@@ -101,16 +101,7 @@ class QueueRunner:
             return
         logger.info("QueueRunner: found %d zombie session(s), re-queuing…", len(zombie_items))
         for item in zombie_items:
-            # Clear timestamps and session_id when re-queuing to avoid inconsistent state
-            self._db.update_queue_item(item.id, status="pending", session_id=None, ended_at=None)
-            # Also clear started_at via direct SQL update
-            assert self._db._conn
-            with self._db._lock:
-                self._db._conn.execute(
-                    "UPDATE queue SET started_at = NULL WHERE id = ?",
-                    (item.id,),
-                )
-                self._db._conn.commit()
+            self._db.reset_to_pending(item.id)
 
     # ── async loops ───────────────────────────────────────────────────────────
 

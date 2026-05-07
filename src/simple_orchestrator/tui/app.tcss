@@ -1,0 +1,105 @@
+/* ── Global ──────────────────────────────────────────────────────────────── */
+Screen {
+    layout: horizontal;
+    background: #282a36;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+#sidebar {
+    width: 35;
+    border-right: round #bd93f9;
+    background: #282a36;
+    padding: 1;
+}
+
+#sidebar-agents {
+    height: auto;
+    max-height: 50%;
+    background: #282a36;
+    border: round #6272a4;
+    padding: 1;
+    margin: 1 0;
+}
+
+#sidebar-events {
+    height: auto;
+    max-height: 50%;
+    background: #282a36;
+    border: round #6272a4;
+    padding: 1;
+    margin: 1 0;
+}
+
+/* ── Main content ────────────────────────────────────────────────────────── */
+#main-content {
+    width: 1fr;
+    layout: vertical;
+    background: #282a36;
+    padding: 1;
+}
+
+#columns {
+    height: 3fr;
+    margin-bottom: 1;
+}
+
+.col {
+    width: 1fr;
+    layout: vertical;
+    border: round #44475a;
+    margin: 0 1;
+    padding: 1;
+}
+
+.col:first-of-type { margin-left: 0; }
+.col:last-of-type  { margin-right: 0; }
+
+/* ── Section labels ──────────────────────────────────────────────────────── */
+.section-label {
+    background: transparent;
+    color: #f8f8f2;
+    padding: 0 0 1 0;
+    text-style: bold;
+    height: auto;
+}
+
+.section-label.pending  { color: #f1fa8c; }
+.section-label.running  { color: #50fa7b; }
+.section-label.finished { color: #8be9fd; }
+.section-label.logs     { color: #ff79c6; }
+.section-label.agents   { color: #bd93f9; }
+.section-label.events   { color: #ffb86c; }
+
+QueueTable {
+    height: 1fr;
+    border: none;
+    background: #282a36;
+    padding: 0;
+}
+
+/* ── Header / Footer ─────────────────────────────────────────────────────── */
+Header { background: #44475a; color: #f8f8f2; }
+Footer { background: #44475a; color: #f8f8f2; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+Button {
+    background: #44475a;
+    color: #f8f8f2;
+    border: round #bd93f9;
+    min-width: 12;
+    height: 3;
+}
+
+Button:hover { background: #bd93f9; color: #282a36; }
+
+Button.-primary {
+    background: #50fa7b;
+    color: #282a36;
+    border: round #50fa7b;
+}
+
+Button.-primary:hover {
+    background: #50fa7b;
+    color: #282a36;
+    text-style: bold;
+}
