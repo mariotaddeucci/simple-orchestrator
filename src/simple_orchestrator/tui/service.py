@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING
 
 from croniter import croniter
 
+from simple_orchestrator.cron_runner import _cron_key
 from simple_orchestrator.models.agent_record import AgentRecord
 from simple_orchestrator.models.queue_item import QueueItem
+from simple_orchestrator.polling_runner import _polling_key
 
 if TYPE_CHECKING:
     from simple_orchestrator.db.orchestrator import OrchestratorDB
@@ -92,7 +94,7 @@ class OrchestratorService:
         now = datetime.now(UTC)
 
         for polling in self._settings.pollings:
-            key = f"polling_{polling.agent_id}_{polling.prompt}"
+            key = _polling_key(polling)
             last_run = self._db.get_cron_last_run(key)
             if last_run:
                 next_run = datetime.fromtimestamp(last_run.timestamp() + polling.interval_minutes * 60, UTC)
@@ -101,7 +103,7 @@ class OrchestratorService:
             events.append(ScheduledEvent("polling", polling.agent_id, f"every {polling.interval_minutes}m", next_run))
 
         for cron_cfg in self._settings.crons:
-            key = f"cron_{cron_cfg.agent_id}_{cron_cfg.prompt}"
+            key = _cron_key(cron_cfg)
             last_run = self._db.get_cron_last_run(key)
             base = last_run.replace(tzinfo=None) if last_run else now.replace(tzinfo=None)
             ci = croniter(cron_cfg.cron, base)

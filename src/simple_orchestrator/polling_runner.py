@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import anyio
@@ -10,6 +11,11 @@ if TYPE_CHECKING:
     from .settings import PollingSettings
 
 logger = get_internal_logger(__name__)
+
+
+def _polling_key(p: PollingSettings) -> str:
+    """Generate a stable key for polling last_run persistence."""
+    return f"polling_{p.agent_id}_{p.prompt}"
 
 
 class PollingRunner:
@@ -66,6 +72,8 @@ class PollingRunner:
                 logger.debug("polling [%s]: skipped — duplicate pending/running", p.agent_id)
                 return
             self._db.enqueue(p.agent_id, p.prompt)
+            # Persist last_run timestamp for schedule tracking
+            self._db.set_cron_last_run(_polling_key(p), datetime.now(UTC))
             logger.info(
                 "polling [%s]: enqueued — %.60s%s",
                 p.agent_id,

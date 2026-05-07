@@ -2,6 +2,8 @@ import argparse
 import asyncio
 import threading
 
+import anyio
+
 from .cron_runner import CronRunner
 from .db import OrchestratorDB, SessionHistoryDB
 from .logging_config import get_internal_logger, setup_logging
@@ -104,9 +106,9 @@ def _start() -> None:
             settings.mcp_server_port,
         )
 
-        # Start runners in background threads
-        t1 = threading.Thread(target=runner.start, daemon=True)
-        t2 = threading.Thread(target=poller.start, daemon=True)
+        # Start runners in background threads with anyio.run() wrapper
+        t1 = threading.Thread(target=lambda: anyio.run(runner.start), daemon=True)
+        t2 = threading.Thread(target=lambda: anyio.run(poller.start), daemon=True)
         t1.start()
         t2.start()
 

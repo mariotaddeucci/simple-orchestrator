@@ -78,11 +78,10 @@ class LogPanel(Container):
         table.add_column("Logger", width=35)
         table.add_column("Message")
 
+        # Highlight INFO option by default (index 1 in _LOG_LEVELS)
         selector = self.query_one("#log-level-selector", OptionList)
-        for idx, option in enumerate(selector._options):
-            if option.id == "log-level-INFO":
-                selector.highlighted = idx
-                break
+        info_idx = _LOG_LEVELS.index("INFO")
+        selector.highlighted = info_idx
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         level = (event.option.id or "log-level-INFO").replace("log-level-", "")

@@ -27,3 +27,11 @@ class QueueItem(SQLModel, table=True):
         if isinstance(v, datetime) and v.tzinfo is None:
             return v.replace(tzinfo=UTC)
         return v
+
+    @field_validator("depends_on", mode="before")
+    @classmethod
+    def _coerce_depends_on(cls, v: object) -> object:
+        """Coerce None to empty list for backwards compatibility with old DB rows."""
+        if v is None:
+            return []
+        return v
