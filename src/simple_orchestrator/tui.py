@@ -825,11 +825,12 @@ class OrchestratorTUI(App[None]):
         margin-right: 1;
         color: #8be9fd;
         align: right middle;
+        height: 1;
     }
 
     #log-level-selector {
-        width: 15;
-        height: 3;
+        width: 20;
+        height: 1;
     }
 
     #log-level-selector Select {
