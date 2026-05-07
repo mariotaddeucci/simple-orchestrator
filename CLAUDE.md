@@ -8,10 +8,22 @@ All commands use `uv` — never activate the venv manually.
 
 ```bash
 uv run python -c "..."          # run inline Python
+uv run python <script>.py       # run Python scripts
 uv run simple-orchestrator      # run CLI entrypoint (currently a stub)
 uv add <package>                # add dependency
 uv sync --frozen                # sync venv strictly from lock file (reproducible)
 ```
+
+### Documentation lookup (Context7)
+
+Use Context7 to fetch up-to-date library docs before implementing integrations:
+
+```bash
+ctx7 get <library-name>         # fetch docs for a library (e.g. ctx7 get aiosqlite)
+ctx7 search <query>             # search across libraries
+```
+
+Prefer `ctx7 get` over assumptions when working with third-party APIs (`aiosqlite`, `claude-agent-sdk`, `pydantic`, `ruff`, etc.).
 
 ### Code quality
 
