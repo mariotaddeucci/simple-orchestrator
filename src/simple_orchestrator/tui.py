@@ -54,20 +54,20 @@ _FINISHED_LIMIT = 20  # how many recent finished items to display
 _LOG_DISPLAY_LINES = 100  # max lines shown in the log panel
 
 _STATUS_STYLE: dict[str, str] = {
-    "pending": "yellow",
-    "running": "cyan",
-    "completed": "green",
-    "failed": "red",
-    "killed": "red",
-    "cancelled": "dim",
+    "pending": "#f1fa8c",  # Dracula yellow
+    "running": "#8be9fd",  # Dracula cyan
+    "completed": "#50fa7b",  # Dracula green
+    "failed": "#ff5555",  # Dracula red
+    "killed": "#ff5555",  # Dracula red
+    "cancelled": "#6272a4",  # Dracula comment (dim)
 }
 
 _LOG_LEVEL_STYLE: dict[str, str] = {
-    "DEBUG": "dim",
-    "INFO": "white",
-    "WARNING": "yellow",
-    "ERROR": "bold red",
-    "CRITICAL": "bold red on dark_red",
+    "DEBUG": "#6272a4",  # Dracula comment
+    "INFO": "#f8f8f2",  # Dracula foreground
+    "WARNING": "#ffb86c",  # Dracula orange
+    "ERROR": "bold #ff5555",  # Dracula red
+    "CRITICAL": "bold #ff5555 on #44475a",  # Red on current line
 }
 
 
@@ -167,28 +167,28 @@ class ScheduledEventCard(Static):
     DEFAULT_CSS = """
     ScheduledEventCard {
         height: auto;
-        border: solid $accent-darken-1;
-        background: $panel;
+        border: round #bd93f9;
+        background: #44475a;
         padding: 1 2;
         margin: 1 0;
     }
 
     ScheduledEventCard .event-type {
         text-style: bold;
-        color: $warning;
+        color: #ffb86c;
     }
 
     ScheduledEventCard .event-agent {
-        color: $text;
+        color: #f8f8f2;
     }
 
     ScheduledEventCard .event-next-run {
-        color: $success;
-        text-style: dim;
+        color: #50fa7b;
+        text-style: italic;
     }
 
     ScheduledEventCard .event-schedule {
-        color: $text-muted;
+        color: #6272a4;
         text-style: dim;
     }
     """
@@ -214,25 +214,25 @@ class AgentCard(Static):
     DEFAULT_CSS = """
     AgentCard {
         height: auto;
-        border: solid $accent;
-        background: $panel;
+        border: round #bd93f9;
+        background: #44475a;
         padding: 1 2;
         margin: 1 0;
     }
 
     AgentCard:hover {
-        border: solid $success;
-        background: $surface;
+        border: round #50fa7b;
+        background: #6272a4;
     }
 
     AgentCard .agent-name {
         text-style: bold;
-        color: $text;
+        color: #f8f8f2;
     }
 
     AgentCard .agent-vendor {
-        color: $text-muted;
-        text-style: dim;
+        color: #8be9fd;
+        text-style: italic;
     }
     """
 
@@ -274,14 +274,14 @@ class DirectoryBrowser(ModalScreen[str | None]):
     #browser-dialog {
         width: 70;
         height: 30;
-        border: thick $accent;
-        background: $surface;
+        border: thick #bd93f9;
+        background: #282a36;
         padding: 1 2;
     }
 
     #browser-dialog .dialog-title {
         text-style: bold;
-        color: $text;
+        color: #ff79c6;
         text-align: center;
         margin-bottom: 1;
     }
@@ -289,6 +289,7 @@ class DirectoryBrowser(ModalScreen[str | None]):
     #directory-tree {
         height: 1fr;
         margin-bottom: 1;
+        background: #44475a;
     }
 
     #browser-button-container {
@@ -337,14 +338,14 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     #prompt-dialog {
         width: 80;
         height: 30;
-        border: thick $accent;
-        background: $surface;
+        border: thick #bd93f9;
+        background: #282a36;
         padding: 1 2;
     }
 
     #prompt-dialog .dialog-title {
         text-style: bold;
-        color: $text;
+        color: #ff79c6;
         text-align: center;
         margin-bottom: 1;
     }
@@ -352,15 +353,20 @@ class PromptModal(ModalScreen[tuple[str, str | None] | None]):
     #prompt-input {
         height: 12;
         margin-bottom: 1;
+        background: #44475a;
+        border: round #6272a4;
     }
 
     #workdir-label {
         margin-bottom: 0;
         margin-top: 1;
+        color: #f8f8f2;
     }
 
     #workdir-input {
         margin-bottom: 1;
+        background: #44475a;
+        border: round #6272a4;
     }
 
     #button-container {
@@ -490,7 +496,7 @@ class QueueTable(DataTable):
                     agent,
                     _truncate(item.prompt),
                     _fmt_dt(item.created_at),
-                    "[red]✕ Cancel[/]",
+                    "[#ff5555]✕ Cancel[/]",
                     key=item.id,
                 )
         elif self._mode == "running":
@@ -502,7 +508,7 @@ class QueueTable(DataTable):
                     _truncate(item.prompt),
                     _fmt_dt(item.started_at),
                     _elapsed(item.started_at, None),
-                    "[red]✕ Kill[/]",
+                    "[#ff5555]✕ Kill[/]",
                     key=item.id,
                 )
         else:  # finished
@@ -526,39 +532,45 @@ class OrchestratorTUI(App[None]):
     CSS = """
     Screen {
         layout: horizontal;
+        background: #282a36;
     }
 
     /* ── Sidebar for agents and scheduled events ───────────── */
     #sidebar {
-        width: 28;
-        border-right: solid $accent;
-        background: $panel;
+        width: 30;
+        border-right: solid #bd93f9;
+        background: #282a36;
     }
 
     #sidebar-agents {
         height: auto;
         max-height: 50%;
+        background: #282a36;
     }
 
     #sidebar-events {
         height: auto;
         max-height: 50%;
+        background: #282a36;
     }
 
     .section-label.agents {
-        background: $primary;
-        color: $text;
+        background: #bd93f9;
+        color: #282a36;
+        text-style: bold;
     }
 
     .section-label.events {
-        background: $warning;
-        color: $text;
+        background: #ffb86c;
+        color: #282a36;
+        text-style: bold;
     }
 
     /* ── Main content area ────────────────────────────────── */
     #main-content {
         width: 1fr;
         layout: vertical;
+        background: #282a36;
     }
 
     /* ── Three-column queue area ────────────────────────────── */
@@ -569,7 +581,7 @@ class OrchestratorTUI(App[None]):
     .col {
         width: 1fr;
         layout: vertical;
-        border-right: solid $panel;
+        border-right: solid #44475a;
     }
 
     .col:last-of-type {
@@ -578,35 +590,80 @@ class OrchestratorTUI(App[None]):
 
     /* ── Section label strip ────────────────────────────────── */
     .section-label {
-        background: $accent;
-        color: $text;
-        padding: 0 1;
+        background: #6272a4;
+        color: #f8f8f2;
+        padding: 0 2;
         text-style: bold;
         height: 1;
     }
 
+    .section-label.pending {
+        background: #f1fa8c;
+        color: #282a36;
+    }
+
     .section-label.running {
-        background: $success;
+        background: #50fa7b;
+        color: #282a36;
     }
 
     .section-label.finished {
-        background: $panel;
+        background: #44475a;
+        color: #f8f8f2;
     }
 
     .section-label.logs {
-        background: $warning;
-        color: $text;
+        background: #ff79c6;
+        color: #282a36;
     }
 
     QueueTable {
         height: 1fr;
         border: none;
+        background: #282a36;
     }
 
     /* ── Log panel ──────────────────────────────────────────── */
     #log-panel {
         height: 2fr;
         border: none;
+        background: #282a36;
+        color: #f8f8f2;
+    }
+
+    /* ── Header and Footer styling ──────────────────────────── */
+    Header {
+        background: #44475a;
+        color: #f8f8f2;
+    }
+
+    Footer {
+        background: #44475a;
+        color: #f8f8f2;
+    }
+
+    /* ── Button styling ────────────────────────────────────── */
+    Button {
+        background: #44475a;
+        color: #f8f8f2;
+        border: round #bd93f9;
+    }
+
+    Button:hover {
+        background: #bd93f9;
+        color: #282a36;
+    }
+
+    Button.-primary {
+        background: #50fa7b;
+        color: #282a36;
+        border: round #50fa7b;
+    }
+
+    Button.-primary:hover {
+        background: #50fa7b;
+        color: #282a36;
+        text-style: bold;
     }
     """
 
