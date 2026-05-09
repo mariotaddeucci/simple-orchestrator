@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
@@ -28,11 +29,12 @@ def _print_missing_dep(*, extra: str, err: ImportError) -> None:
 @app.command("standalone")
 def cmd_standalone() -> None:
     """Start TUI with an embedded worker — both read/write the SQLite DB directly (no HTTP)."""
-    from simple_orchestrator_core.settings import TuiSettings, WorkerSettings  # noqa: PLC0415
+    from simple_orchestrator_core.settings import WorkerSettings  # noqa: PLC0415
 
     try:
         from simple_orchestrator_database.repository import OrchestratorDB  # noqa: PLC0415
         from simple_orchestrator_tui.app import OrchestratorTUI  # noqa: PLC0415
+        from simple_orchestrator_worker.logging_config import setup_logging as setup_worker_logging  # noqa: PLC0415
         from simple_orchestrator_worker.worker_runner import WorkerRunner  # noqa: PLC0415
         from simple_orchestrator_worker.worker_service import build_vendors  # noqa: PLC0415
 
@@ -41,10 +43,17 @@ def cmd_standalone() -> None:
         _print_missing_dep(extra="standalone", err=e)
         raise typer.Exit(1) from e
 
-    tui_settings = TuiSettings()
     worker_settings = WorkerSettings()
 
-    db = OrchestratorDB(tui_settings.db_path)
+    base_dir = Path.home() / "simple-orchestrator"
+    db_path = base_dir / "metadata.db"
+    logs_dir = base_dir / "logs"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    setup_worker_logging(logs_dir, worker_settings.log_level, enable_console=False)
+
+    db = OrchestratorDB(db_path)
     client = StandaloneClient(db)
     store = StandaloneSessionStore(db)
     vendors = build_vendors(session_store=store)

@@ -17,8 +17,8 @@ from simple_orchestrator_core.models.mcp_record import McpRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
 from simple_orchestrator_core.models.worker_heartbeat import WorkerHeartbeat
+from simple_orchestrator_core.session_config_builder import build_session_config
 from simple_orchestrator_database.repository import OrchestratorDB
-from simple_orchestrator_webapi.session_config_builder import build_session_config
 
 
 class StandaloneClient:
