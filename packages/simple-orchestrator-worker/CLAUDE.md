@@ -27,10 +27,14 @@ Robust execution: concurrency, per-`workdir` serialization, cancellation, timeou
 
 ## WorkerRunner lifecycle
 
+`WorkerRunner.client` is typed as `IOrchestratorClient` (from `core`). It is satisfied by both `OrchestratorApiClient` (distributed mode) and `StandaloneClient` (standalone mode). Never type it as a concrete class.
+
+`ApiSessionStore.client` is also typed as `IOrchestratorClient`. In standalone mode, use `StandaloneSessionStore` (backed by `OrchestratorDB`) instead.
+
 1. `start()` — launches heartbeat loop, dequeue/dispatch loop, and event scheduler loop concurrently.
-2. **Heartbeat loop** — sends `POST /heartbeat` every `heartbeat_interval_seconds`.
-3. **Dispatch loop** — polls `dequeue_next()` every `poll_interval_seconds`; respects `max_active_sessions`.
-4. **Event scheduler loop** — checks for due events and enqueues them; updates `next_run` after firing.
+2. **Heartbeat loop** — calls `client.send_heartbeat()` every `heartbeat_interval_seconds`.
+3. **Dispatch loop** — polls `client.dequeue_next()` every `poll_interval_seconds`; respects `max_active_sessions`.
+4. **Event scheduler loop** — checks for due events via `client.list_events(enabled=True)` and enqueues them; updates `next_run` after firing.
 5. `_run_lease()` — acquires per-`workdir` lock, then calls vendor `run()`.
 6. `_process_lease()` — updates queue item with `session_id`, runs vendor, writes final status back.
 

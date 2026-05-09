@@ -32,47 +32,47 @@ Evolve schemas carefully — changes here ripple into `database`, `webapi`, `api
 | `src/simple_orchestrator_core/mcp_inputs.py` | MCP server configuration helpers |
 | `src/simple_orchestrator_core/schedule.py` | `compute_next_run()` for interval/cron scheduling |
 
-## Repository Protocols (`interfaces.py`)
+## Protocols (`interfaces.py`)
 
-`IOrchestratorRepository` composes five sub-protocols:
+### `IOrchestratorRepository` (sync — database only)
 
-**`IAgentRepository`**
-- `list_agents()` → `list[AgentRecord]`
-- `get_agent(agent_id)` → `AgentRecord | None`
-- `upsert_agent(req: AgentUpsertRequest)` → `AgentRecord`
-- `delete_agent(agent_id)` → `bool`
+Composes seven sub-protocols implemented by `OrchestratorDB`:
 
-**`IQueueRepository`**
-- `enqueue(agent_id, prompt, workdir, depends_on, item_id)` → `QueueItem`
-- `list_queue(*, status, agent_id)` → `list[QueueItem]`
-- `get_queue_item(item_id)` → `QueueItem | None`
-- `update_queue_item(item_id, *, status, session_id, ended_at, started_at, note)` → `None`
-- `update_queue_item_api(item_id, req: QueueUpdateRequest)` → `QueueItem | None`
-- `cancel_queue_item(item_id)` → `None`
-- `reset_to_pending(item_id)` → `None`
-- `add_task_note(item_id, note)` → `bool`
-- `has_duplicate_pending(agent_id, prompt)` → `bool`
-- `dequeue_next()` → `QueueItem | None`
-- `cleanup_old_completed_items(*, max_items=15, max_age_days=7)` → `int`
+**`IAgentRepository`** — `list_agents`, `get_agent`, `upsert_agent`, `delete_agent`
 
-**`ISessionRepository`**
-- `save_session(record: SessionRecord)` / `save(record)` → `None`
-- `update_session_status(session_id, req: SessionUpdateRequest)` → `None`
-- `update_status(session_id, status, ended_at, vendor_session_id)` → `None`
-- `get_session(session_id)` / `get(session_id)` → `SessionRecord | None`
-- `list_sessions(*, vendor, status)` → `list[SessionRecord]`
+**`IQueueRepository`** — `enqueue`, `list_queue`, `get_queue_item`, `update_queue_item`, `update_queue_item_api`, `cancel_queue_item`, `reset_to_pending`, `add_task_note`, `has_duplicate_pending`, `dequeue_next`, `cleanup_old_completed_items`
 
-**`IMemoryRepository`**
-- `save_memory(agent_id, description, content)` → `MemoryRecord`
-- `get_memory(memory_id)` → `MemoryRecord | None`
-- `delete_memory(memory_id)` → `bool`
-- `list_memories(agent_id)` → `list[MemoryRecord]`
+**`ISessionRepository`** — `save_session`/`save`, `update_session_status`, `update_status`, `get_session`/`get`, `list_sessions`
 
-**`IWorkerRepository`**
-- `upsert_worker_heartbeat(heartbeat: WorkerHeartbeat)` → `WorkerHeartbeatRecord`
-- `list_alive_workers(*, ttl_seconds)` → `list[WorkerHeartbeatRecord]`
+**`IMemoryRepository`** — `save_memory`, `get_memory`, `delete_memory`, `list_memories`
+
+**`IWorkerRepository`** — `upsert_worker_heartbeat`, `list_alive_workers`
+
+**`IMcpRepository`** — `list_mcps`, `get_mcp`, `upsert_mcp`, `delete_mcp`
+
+**`IEventRepository`** — `list_events`, `get_event`, `create_event`, `update_event`, `delete_event`, `get_due_events`, `update_next_run`
 
 Plus `connect()` / `close()` on the composite `IOrchestratorRepository`.
+
+### `IOrchestratorClient` (async — used by worker, TUI, and standalone wiring)
+
+Single async contract satisfied by **both** `OrchestratorApiClient` (HTTP → webapi) and `StandaloneClient` (direct SQLite). Consumers (`WorkerRunner`, `ApiSessionStore`, `OrchestratorTUI`) are typed against this Protocol — never against a concrete class.
+
+```python
+class IOrchestratorClient(Protocol):
+    async def send_heartbeat(heartbeat: WorkerHeartbeat) -> None
+    async def list_agents() -> list[AgentRecord]
+    async def enqueue(req: EnqueueRequest) -> QueueItem
+    async def list_queue(*, status, agent_id) -> list[QueueItem]
+    async def update_queue_item(item_id, req: QueueUpdateRequest) -> QueueItem
+    async def dequeue_next() -> QueueDequeueResponse | None
+    async def create_session(req: SessionCreateRequest) -> None
+    async def update_session(session_id, req: SessionUpdateRequest) -> None
+    async def list_events(*, enabled) -> list[EventRecord]
+    async def update_event(event_id, req: EventUpdateRequest) -> EventRecord
+```
+
+**Rule**: never add `OrchestratorApiClient` or `StandaloneClient` as a type annotation outside their own packages. Always use `IOrchestratorClient`.
 
 ## Domain models
 
@@ -83,6 +83,8 @@ Plus `connect()` / `close()` on the composite `IOrchestratorRepository`.
 | `SessionRecord` | ✅ | `id`, `vendor`, `prompt`, `workdir`, `status`, `vendor_session_id`, timestamps |
 | `MemoryRecord` | ✅ | `id`, `agent_id`, `description`, `content`, `updated_at` |
 | `WorkerHeartbeatRecord` | ✅ | `id`, `type`, `name`, `last_heartbeat_at` |
+| `McpRecord` | ✅ | `id`, `name`, `type` (str: stdio/sse/http), `command`, `args`, `env`, `url`, `headers`, `is_global`, `enabled` |
+| `EventRecord` | ✅ | `id`, `name`, `agent_id`, `prompt`, `workdir`, `schedule_type` (str: interval/cron), `interval_minutes`, `cron_expression`, `next_run`, `enabled` |
 | `AgentConfig` | ❌ | `description`, `prompt`, `model`, `tools`, `skills`, `mcp_servers`, `max_turns`, `effort`, `permission_mode` |
 | `SessionConfig` | ❌ | `prompt`, `model`, `workdir`, `mcp_servers`, `skills`, `max_turns`, `permission_mode`, `env` |
 | `McpConfig` | ❌ | Union of `McpStdioConfig | McpSseConfig | McpHttpConfig` (discriminator: `type`) |
@@ -91,7 +93,7 @@ Plus `connect()` / `close()` on the composite `IOrchestratorRepository`.
 
 | Setting | Class | Default |
 |---|---|---|
-| `db_path` | `WebApiSettings` | `"orchestrator.db"` |
+| `db_path` | `WebApiSettings`, `TuiSettings` | `"orchestrator.db"` |
 | `webapi_host` / `webapi_port` | `WebApiSettings` | `127.0.0.1:8765` |
 | `api_key` | `WebApiSettings` | `"change-me"` |
 | `heartbeat_ttl_seconds` | `WebApiSettings` | `30.0` |
@@ -101,6 +103,7 @@ Plus `connect()` / `close()` on the composite `IOrchestratorRepository`.
 | `poll_interval_seconds` | `WorkerSettings` | `1.0` |
 | `heartbeat_interval_seconds` | `WorkerSettings` | `10.0` |
 | `worker_id` | `WorkerSettings` | auto ULID at startup |
+| `standalone` | `TuiSettings` | `True` |
 
 ## Quick validation
 
