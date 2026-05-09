@@ -6,10 +6,12 @@ from .model import ModelInfo
 from .queue_item import QueueItem
 from .session import SessionConfig, SessionRecord
 from .skill import SkillConfig
+from .worker_heartbeat import HealthResponse, WorkerHeartbeat, WorkerHeartbeatStatus, WorkerType
 
 __all__ = [
     "AgentConfig",
     "AgentRecord",
+    "HealthResponse",
     "McpConfig",
     "McpHttpConfig",
     "McpSseConfig",
@@ -20,4 +22,7 @@ __all__ = [
     "SessionConfig",
     "SessionRecord",
     "SkillConfig",
+    "WorkerHeartbeat",
+    "WorkerHeartbeatStatus",
+    "WorkerType",
 ]
