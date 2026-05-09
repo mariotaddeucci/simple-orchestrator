@@ -1,6 +1,6 @@
 # simple-orchestrator
 
-> Orquestrador de agentes IA multi-vendor assíncrono, com fila de tarefas persistida em SQLite e suporte a execução standalone ou distribuída via REST API.
+> Orquestrador de agentes IA multi-vendor assíncrono, com fila de tarefas e agendamento persistidos em SQLite, gerenciados via REST API.
 
 ---
 
@@ -10,9 +10,11 @@
 
 Ideal para pipelines onde um agente "delegador" distribui trabalho para agentes especializados, ou para automatizar tarefas recorrentes (revisão de código, auditorias, relatórios) sem intervenção humana.
 
+**Orientado a banco de dados:** agentes, MCPs e eventos de agendamento são criados e gerenciados pela API REST (não por arquivos de configuração). O `orchestrator.toml` define apenas parâmetros de infraestrutura.
+
 **Dois modos de execução:**
-- **Standalone** — TUI e worker acessam o SQLite diretamente, sem serviço intermediário.
-- **Distribuído** — TUI e worker comunicam-se com uma WebAPI REST; o banco fica centralizado.
+- **Standalone** — `simple-orchestrator tui` inicia WebAPI e worker automaticamente como subprocessos. Tudo em um comando.
+- **Distribuído** — WebAPI, worker e TUI correm em processos separados (possivelmente em hosts diferentes).
 
 ---
 
@@ -20,12 +22,14 @@ Ideal para pipelines onde um agente "delegador" distribui trabalho para agentes 
 
 | Funcionalidade | Descrição |
 |---|---|
+| **Agentes via API** | Crie, atualize e delete agentes pelo REST (`POST /agents`). Sem configuração em TOML. |
+| **MCPs via API** | Registre servidores MCP (stdio/sse/http) globais ou por agente via `POST /mcps`. |
 | **Fila de tarefas** | Agentes enfileirados e processados com paralelismo configurável. Tarefas no mesmo `workdir` são serializadas automaticamente. |
+| **Eventos agendados** | Crie eventos com intervalo fixo (`interval_minutes`) ou expressão cron (`cron_expression`). O worker dispara automaticamente e calcula o próximo `next_run`. |
 | **Dependências entre tarefas** | Uma tarefa pode declarar `depends_on`; só inicia após todas as dependências completarem. |
-| **Dois modos de execução** | Standalone (SQLite direto) ou distribuído (REST API + worker remoto). |
+| **Dois modos de execução** | Standalone (um comando, subprocessos automáticos) ou distribuído (REST API + worker remoto). |
 | **Multi-vendor** | Suporta `claude_code`, `opencode` e `github_copilot` como backends. |
-| **MCP** | Conecta servidores MCP externos via `stdio`, `sse` ou `http`, por configuração. |
-| **TUI** | Interface terminal que consome a REST API (modo distribuído) ou o banco diretamente (standalone). |
+| **TUI** | Interface terminal com tabs de Fila, Agentes e Eventos. Enfileirar tarefa por seleção de agente na lista. |
 
 ---
 
@@ -46,72 +50,35 @@ uv run prek install   # instala git hooks
 
 ## Configuração
 
-A configuração pode ser feita via `orchestrator.toml` (arquivo dedicado) ou via `pyproject.toml` (seção `[tool.simple-orchestrator]`).
+O `orchestrator.toml` define apenas infraestrutura. Agentes, MCPs e eventos são gerenciados pela API.
 
-**Prioridade:** `orchestrator.toml` → `pyproject.toml` → variáveis de ambiente → valores padrão.
-
-### Exemplo mínimo (`orchestrator.toml`)
+### `orchestrator.toml` (infraestrutura)
 
 ```toml
 db_path             = "orchestrator.db"
 logs_dir            = "logs"
 log_level           = "INFO"
 max_active_sessions = 4
+default_task_timeout_minutes = 30.0
+poll_interval_seconds = 1.0
 
-[agents.reviewer]
-name    = "Code Reviewer"
-vendor  = "claude_code"
-model   = "claude-sonnet-4-6"
-workdir = "."
-prompt  = "Você é um revisor de código especialista. Analise as mudanças e liste problemas por: Bugs / Segurança / Performance / Estilo."
+api_key      = "change-me"
+webapi_host  = "127.0.0.1"
+webapi_port  = 8765
 ```
 
-Prompt em arquivo separado (recomendado para prompts longos):
-
-```toml
-[agents.reviewer]
-name        = "Code Reviewer"
-vendor      = "claude_code"
-model       = "claude-sonnet-4-6"
-workdir     = "."
-prompt_file = "prompts/reviewer.md"
-```
-
-### Com MCP e skills
-
-```toml
-[mcp_servers.filesystem]
-type    = "stdio"
-command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
-
-[agents.reviewer]
-name        = "Code Reviewer"
-vendor      = "claude_code"
-model       = "claude-sonnet-4-6"
-workdir     = "."
-prompt      = "Revise o código."
-mcp_servers = ["filesystem"]
-```
-
-### Múltiplos ambientes
-
-```bash
-ORCHESTRATOR_TOML_FILE=/etc/orchestrator/prod.toml uv run simple-orchestrator worker
-```
+**Prioridade de configuração:** `orchestrator.toml` → env vars → `.env` → `pyproject.toml` → defaults.
 
 ---
 
 ## Uso
 
-### Modo standalone
+### Modo standalone (recomendado para começar)
+
+Um único comando inicia a WebAPI, o worker e a TUI. Worker é subprocesso da TUI — encerra junto.
 
 ```bash
-# Terminal 1 — worker (processa a fila localmente)
-uv run simple-orchestrator worker
-
-# Terminal 2 — TUI (interface terminal, acessa banco direto)
-uv run simple-orchestrator-tui
+uv run simple-orchestrator tui
 ```
 
 ### Modo distribuído
@@ -123,8 +90,86 @@ uv run simple-orchestrator webapi
 # Worker remoto — conecta via API
 ORCHESTRATOR_API_URL=http://servidor:8765 uv run simple-orchestrator worker
 
-# TUI — conecta via API
-ORCHESTRATOR_API_URL=http://servidor:8765 uv run simple-orchestrator-tui
+# TUI — conecta a WebAPI existente
+ORCHESTRATOR_API_URL=http://servidor:8765 uv run simple-orchestrator tui --distributed
+```
+
+---
+
+## Gerenciando recursos via API
+
+Todos os exemplos assumem `api_key = "change-me"` e `webapi_port = 8765`.
+
+### Criar um agente
+
+```bash
+curl -X POST http://localhost:8765/agents \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "reviewer",
+    "name": "Code Reviewer",
+    "vendor": "claude_code",
+    "model": "claude-sonnet-4-6",
+    "workdir": ".",
+    "prompt": "Você é um revisor de código. Analise as mudanças e reporte problemas."
+  }'
+```
+
+### Registrar um MCP global
+
+```bash
+curl -X POST http://localhost:8765/mcps \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "filesystem",
+    "name": "filesystem",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+    "is_global": true
+  }'
+```
+
+### Enfileirar uma tarefa
+
+```bash
+curl -X POST http://localhost:8765/queue \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "reviewer",
+    "prompt": "Revise o PR mais recente."
+  }'
+```
+
+### Criar um evento agendado
+
+```bash
+# Intervalo fixo: a cada 30 minutos
+curl -X POST http://localhost:8765/events \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "revisão periódica",
+    "agent_id": "reviewer",
+    "prompt": "Revise mudanças recentes e reporte problemas.",
+    "schedule_type": "interval",
+    "interval_minutes": 30
+  }'
+
+# Cron: todo dia às 9h
+curl -X POST http://localhost:8765/events \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "relatório diário",
+    "agent_id": "reviewer",
+    "prompt": "Gere o relatório diário.",
+    "schedule_type": "cron",
+    "cron_expression": "0 9 * * *"
+  }'
 ```
 
 ---
@@ -132,20 +177,12 @@ ORCHESTRATOR_API_URL=http://servidor:8765 uv run simple-orchestrator-tui
 ## Controle de concorrência
 
 ```toml
+# orchestrator.toml
 max_active_sessions = 4   # máximo de sessões simultâneas (global)
-
-[agents.patcher]
-name    = "Code Patcher"
-vendor  = "claude_code"
-workdir = "/workspace/repo"   # tarefas neste dir são serializadas
-prompt  = "Aplique o patch descrito no prompt."
-
-[agents.long_runner]
-name                 = "Long Runner"
-vendor               = "claude_code"
-task_timeout_minutes = 120   # timeout individual (padrão: 30 min)
-prompt               = "Execute análise completa."
 ```
+
+Tarefas para o mesmo `workdir` são serializadas automaticamente pelo worker.
+Timeout individual por agente é configurado no campo `task_timeout_minutes` ao criar o agente.
 
 ---
 
@@ -174,7 +211,7 @@ class MyVendor(BaseVendor):
             pass
 
     async def _vendor_kill(self, session_id: str) -> None:
-        pass  # cancele a sessão no backend externo
+        pass
 ```
 
 ---
@@ -182,9 +219,10 @@ class MyVendor(BaseVendor):
 ## Referência de comandos
 
 ```bash
-uv run simple-orchestrator worker    # worker (fila + FastAPI :8765)
-uv run simple-orchestrator webapi    # WebAPI standalone (sem fila)
-uv run simple-orchestrator-tui       # interface terminal
+uv run simple-orchestrator tui               # standalone: inicia webapi + worker + TUI
+uv run simple-orchestrator tui --distributed # TUI apenas (conecta a webapi existente)
+uv run simple-orchestrator webapi            # WebAPI standalone
+uv run simple-orchestrator worker            # worker standalone
 ```
 
 ---
