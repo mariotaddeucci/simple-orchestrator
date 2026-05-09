@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "simple-orchestrator",
+    "simple-orchestrator[standalone]",
     "simple-orchestrator-api-client",
     "simple-orchestrator-core",
     "simple-orchestrator-database",
@@ -114,10 +114,10 @@ members = [
 ]
 
 [tool.uv.sources]
-simple-orchestrator = { workspace = true }
 simple-orchestrator-core = { workspace = true }
 simple-orchestrator-api-client = { workspace = true }
 simple-orchestrator-database = { workspace = true }
 simple-orchestrator-webapi = { workspace = true }
 simple-orchestrator-tui = { workspace = true }
 simple-orchestrator-worker = { workspace = true }
+simple-orchestrator = { workspace = true }
