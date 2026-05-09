@@ -13,11 +13,11 @@ dependencies = [
     "github-copilot-sdk>=0.3.0",
     "opencode-ai>=0.1.0a36",
     "fastmcp>=2.0.0",
+    "fastapi>=0.115.0",
     "pydantic>=2.13.3",
     "pydantic-settings>=2.14.0",
     "python-ulid>=3.1.0",
-    "croniter>=6.2.2",
-    "textual>=3.0.0",
+    "uvicorn>=0.35.0",
     "sqlmodel>=0.0.38",
 ]
 
@@ -106,3 +106,10 @@ markers = [
 
 [tool.pyrefly]
 project_includes = ["src"]
+
+[tool.uv.workspace]
+members = ["packages/simple-orchestrator-tui"]
+
+[tool.uv.sources]
+simple-orchestrator = { workspace = true }
+simple-orchestrator-tui = { workspace = true }

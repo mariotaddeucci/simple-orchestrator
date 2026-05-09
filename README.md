@@ -1,6 +1,6 @@
 # simple-orchestrator
 
-> Orquestrador de agentes IA multi-vendor assíncrono, com fila de tarefas, polling, cron e servidor MCP integrado.
+> Orquestrador de agentes IA multi-vendor assíncrono, com fila de tarefas e worker REST (FastAPI) para controle remoto.
 
 ---
 
@@ -18,14 +18,13 @@ Ideal para pipelines onde um agente "delegador" precisa distribuir trabalho para
 |---|---|
 | **Fila de tarefas** | Agentes são enfileirados e processados com paralelismo configurável. Tarefas com o mesmo `workdir` são serializadas automaticamente. |
 | **Dependências entre tarefas** | Uma tarefa pode declarar `depends_on` de outras; ela só inicia após todas as dependências completarem. |
-| **Polling** | Enfileira um prompt em intervalo fixo (ex.: a cada 30 min). Possui deduplicação automática. |
-| **Cron** | Enfileira prompts em horários definidos por expressão cron de 5 campos (ex.: `0 */6 * * *`). |
+| **Worker REST API** | Exposição de endpoints para enfileirar tarefas e acompanhar status remotamente. |
 | **Multi-vendor** | Suporta `claude_code`, `opencode` e `github_copilot` como backends de execução. |
 | **Servidor MCP integrado** | Expõe ferramentas para listar agentes, enfileirar tarefas, monitorar status e salvar memórias — acessíveis diretamente pelos agentes. |
 | **MCP local** | Conecta FastMCP apps diretamente por importlib, sem subprocesso extra. |
 | **Retomada de sessões** | Sessões interrompidas por reinício da aplicação são retomadas automaticamente. |
 | **Memória de agentes** | Agentes podem salvar e recuperar contexto entre execuções via ferramentas MCP. |
-| **TUI** | Interface terminal para inspecionar filas, logs e conversar com um agente (com tools via MCP). |
+| **TUI (cliente)** | Interface terminal separada que consome a REST API (sem acesso direto ao DB/local worker). |
 
 ---
 
@@ -136,123 +135,15 @@ prompt_file = "prompts/security-auditor.md"
 
 ---
 
-## Exemplo: Polling + Cron para atribuição de tarefas
-
-O cenário a seguir mostra um pipeline completo onde:
-
-1. Um **cron** aciona um agente delegador a cada 6 horas para buscar novas tarefas.
-2. Um **polling** aciona um revisor de código a cada 30 minutos para verificar mudanças recentes.
-3. O **delegador** usa as ferramentas MCP para distribuir trabalho para os agentes especializados e aguardar os resultados.
-
-### `orchestrator.toml`
-
-```toml
-db_path             = "orchestrator.db"
-logs_dir            = "logs"
-max_active_sessions = 6
-
-[mcp_servers.orchestrator]
-type = "sse"
-url  = "http://127.0.0.1:8765/sse"
-
-[mcp_servers.filesystem]
-type    = "stdio"
-command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
-
-# ── Polling: revisor de código a cada 30 minutos ──────────────────────────────
-[[pollings]]
-agent_id         = "reviewer"
-prompt           = "Revise as mudanças recentes no repositório e reporte problemas encontrados."
-interval_minutes = 30
-
-# ── Cron: delegador a cada 6 horas ────────────────────────────────────────────
-[[crons]]
-agent_id = "delegator"
-prompt   = "Verifique o backlog de tarefas no sistema e distribua para os agentes disponíveis."
-cron     = "0 */6 * * *"
-
-# ── Agentes ───────────────────────────────────────────────────────────────────
-
-[agents.reviewer]
-name    = "Code Reviewer"
-model   = "claude-code/claude-sonnet-4-6"
-workdir = "."
-prompt  = """
-Você é um revisor de código especialista. Analise as mudanças recentes no git
-e forneça um relatório estruturado com: Bugs / Segurança / Performance / Estilo.
-"""
-
-[agents.security]
-name    = "Security Auditor"
-model   = "claude-code/claude-opus-4-7"
-workdir = "."
-prompt_file = "prompts/security-auditor.md"
-
-[agents.tester]
-name    = "Test Writer"
-model   = "claude-code/claude-sonnet-4-6"
-workdir = "."
-prompt  = "Você escreve testes automatizados para o código indicado no prompt."
-
-[agents.delegator]
-name    = "Task Delegator"
-model   = "claude-code/claude-sonnet-4-6"
-workdir = "."
-prompt_file = "prompts/delegator.md"
-
-# O delegador precisa do MCP do orquestrador para enfileirar e monitorar tarefas
-[agents.delegator.mcp_servers.orchestrator]
-type = "sse"
-url  = "http://127.0.0.1:8765/sse"
-```
-
-### `prompts/delegator.md`
-
-```markdown
-# Task Delegator
-
-## Papel
-Você é o agente central de distribuição de tarefas. Quando acionado, você deve:
-
-1. Usar `list_agents` para descobrir os agentes disponíveis.
-2. Analisar o backlog de trabalho pendente.
-3. Usar `enqueue_tasks` para criar um lote de tarefas com dependências entre elas.
-4. Usar `list_tasks` para monitorar o progresso.
-
-## Exemplo de fluxo
-
-Ao receber "Verifique o backlog e distribua tarefas":
-
-```json
-// Enfileira revisão de segurança e, após concluir, testes automáticos
-[
-  {
-    "alias": "security-check",
-    "agent_id": "security",
-    "prompt": "Audite o módulo src/payments/ em busca de vulnerabilidades OWASP."
-  },
-  {
-    "alias": "write-tests",
-    "agent_id": "tester",
-    "prompt": "Escreva testes para src/payments/ cobrindo os cenários críticos.",
-    "depends_on": ["security-check"]
-  }
-]
-```
-```
-
-### Iniciando o orquestrador
+## Iniciando
 
 ```bash
-uv run simple-orchestrator start
-```
+# Worker (REST API + QueueRunner)
+uv run simple-orchestrator worker
 
-O comando inicia:
-- O **QueueRunner** (processa a fila de tarefas)
-- O **PollingRunner** (dispara tarefas em intervalo fixo)
-- O **CronRunner** (dispara tarefas em horário agendado)
-- O **Servidor MCP** (SSE em `127.0.0.1:8765`)
+# TUI (cliente) — consome a REST API
+uv run simple-orchestrator-tui
+```
 
 ---
 
@@ -476,10 +367,10 @@ prompt                = "Execute análise completa do repositório."
 
 ```bash
 # Produção
-ORCHESTRATOR_TOML_FILE=/etc/orchestrator/prod.toml uv run simple-orchestrator start
+ORCHESTRATOR_TOML_FILE=/etc/orchestrator/prod.toml uv run simple-orchestrator worker
 
 # Staging
-ORCHESTRATOR_TOML_FILE=/etc/orchestrator/staging.toml uv run simple-orchestrator start
+ORCHESTRATOR_TOML_FILE=/etc/orchestrator/staging.toml uv run simple-orchestrator worker
 ```
 
 ---
@@ -487,9 +378,9 @@ ORCHESTRATOR_TOML_FILE=/etc/orchestrator/staging.toml uv run simple-orchestrator
 ## Referência rápida de comandos
 
 ```bash
-uv run simple-orchestrator start          # inicia orquestrador completo (fila + polling + cron + MCP)
+uv run simple-orchestrator worker         # inicia worker (REST API + fila)
 uv run simple-orchestrator mcp-server     # inicia apenas o servidor MCP (stdio)
-uv run simple-orchestrator tui            # abre a interface terminal
+uv run simple-orchestrator-tui            # abre a interface terminal (cliente REST)
 ```
 
 ---

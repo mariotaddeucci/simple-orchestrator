@@ -271,31 +271,6 @@ def test_list_memories(db):
     assert len(a1_mems) == 2
 
 
-# ── cron state ────────────────────────────────────────────────────────────────
-
-
-def test_cron_state(db):
-    assert db.get_cron_last_run("key1") is None
-
-    now = datetime.now(UTC).replace(microsecond=0)
-    db.set_cron_last_run("key1", now)
-
-    result = db.get_cron_last_run("key1")
-    assert result is not None
-    assert result.replace(tzinfo=UTC) == now
-
-
-def test_cron_state_upsert(db):
-    t1 = datetime(2024, 1, 1, tzinfo=UTC)
-    t2 = datetime(2024, 6, 1, tzinfo=UTC)
-    db.set_cron_last_run("k", t1)
-    db.set_cron_last_run("k", t2)
-
-    result = db.get_cron_last_run("k")
-    assert result is not None
-    assert result.replace(tzinfo=UTC) == t2
-
-
 def test_enqueue_agent_nickname_on_agent(db):
     # Agents are now only in TOML, not in DB, so we just test that enqueue works with any agent_id
     agent_id = "my-agent-with-nick"

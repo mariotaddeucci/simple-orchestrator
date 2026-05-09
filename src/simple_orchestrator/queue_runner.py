@@ -64,6 +64,7 @@ class QueueRunner:
         self._running = False
         # Workdir locks are created lazily inside async context (anyio.Lock).
         self._workdir_locks: dict[str, anyio.abc.Lock] = {}
+        self._active_scopes: dict[str, anyio.CancelScope] = {}
         # Stop event is created in start() when an event loop is available.
         self._stop_event: anyio.Event | None = None
 
@@ -92,6 +93,14 @@ class QueueRunner:
     def run_until_empty(self) -> None:
         """Drain the queue synchronously. Used in tests and headless CLI runs."""
         anyio.run(self._run_until_empty_async)
+
+    async def kill_queue_item(self, item_id: str) -> bool:
+        """Request cancellation for an in-flight queue item."""
+        scope = self._active_scopes.get(item_id)
+        if not scope:
+            return False
+        scope.cancel()
+        return True
 
     # ── zombie resume ─────────────────────────────────────────────────────────
 
@@ -190,7 +199,13 @@ class QueueRunner:
         filtered_skills, tmp_skills_dir = self._filter_skills_to_tmpdir(info.skill_globs, item, info)
         try:
             config = self._build_session_config(item, info, extra_skills=filtered_skills)
-            session_id, final_status = await vendor.run(config, timeout_minutes=effective_timeout)
+            cancel_scope = anyio.CancelScope()
+            self._active_scopes[item.id] = cancel_scope
+            try:
+                with cancel_scope:
+                    session_id, final_status = await vendor.run(config, timeout_minutes=effective_timeout)
+            finally:
+                self._active_scopes.pop(item.id, None)
             self._db.update_queue_item(item.id, status=final_status, session_id=session_id, ended_at=datetime.now(UTC))
             logger.info("queue %s [%s] -> %s", item.id, info.label, final_status)
             self._cleanup_if_completed(final_status)

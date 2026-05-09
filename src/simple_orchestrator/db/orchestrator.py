@@ -10,7 +10,6 @@ from ulid import ULID
 
 from simple_orchestrator.db.history import SessionHistoryDB, _clone, _clone_list
 from simple_orchestrator.logging_config import get_internal_logger
-from simple_orchestrator.models.cron_state import CronState
 from simple_orchestrator.models.memory_record import MemoryRecord
 from simple_orchestrator.models.queue_item import QueueItem
 
@@ -261,23 +260,6 @@ class OrchestratorDB(SessionHistoryDB):
             logger.info("Cleaned up %d old completed queue items", len(to_delete))
 
         return len(to_delete)
-
-    # ── cron state ───────────────────────────────────────────────────────────
-
-    def get_cron_last_run(self, key: str) -> datetime | None:
-        with Session(self._engine) as session:
-            row = session.get(CronState, key)
-            return row.last_run if row else None
-
-    def set_cron_last_run(self, key: str, last_run: datetime) -> None:
-        with Session(self._engine) as session:
-            existing = session.get(CronState, key)
-            if existing:
-                existing.last_run = last_run
-                session.add(existing)
-            else:
-                session.add(CronState(key=key, last_run=last_run))
-            session.commit()
 
     # ── memory ────────────────────────────────────────────────────────────────
 
