@@ -1,0 +1,19 @@
+[project]
+name = "simple-orchestrator"
+version = "0.1.0"
+description = "CLI launcher for simple-orchestrator services"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[project.optional-dependencies]
+worker = ["simple-orchestrator-worker"]
+tui = ["simple-orchestrator-tui"]
+all = ["simple-orchestrator-worker", "simple-orchestrator-tui"]
+
+[project.scripts]
+simple-orchestrator = "simple_orchestrator:main"
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"

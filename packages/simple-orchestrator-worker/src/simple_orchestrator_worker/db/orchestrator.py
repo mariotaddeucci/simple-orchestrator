@@ -8,10 +8,10 @@ from sqlalchemy import select, update
 from sqlmodel import Session
 from ulid import ULID
 
-from simple_orchestrator.db.history import SessionHistoryDB, _clone, _clone_list
-from simple_orchestrator.logging_config import get_internal_logger
-from simple_orchestrator.models.memory_record import MemoryRecord
-from simple_orchestrator.models.queue_item import QueueItem
+from simple_orchestrator_worker.db.history import SessionHistoryDB, _clone, _clone_list
+from simple_orchestrator_worker.logging_config import get_internal_logger
+from simple_orchestrator_worker.models.memory_record import MemoryRecord
+from simple_orchestrator_worker.models.queue_item import QueueItem
 
 logger = get_internal_logger(__name__)
 

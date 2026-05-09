@@ -4,9 +4,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-
-from simple_orchestrator.db.orchestrator import OrchestratorDB
-from simple_orchestrator.models.session import SessionRecord
+from simple_orchestrator_worker.db.orchestrator import OrchestratorDB
+from simple_orchestrator_worker.models.session import SessionRecord
 
 
 @pytest.fixture

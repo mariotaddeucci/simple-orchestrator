@@ -14,12 +14,11 @@ import contextlib
 from unittest.mock import MagicMock
 
 import pytest
-
-from simple_orchestrator.db.history import SessionHistoryDB
-from simple_orchestrator.models.session import SessionConfig
-from simple_orchestrator.vendors.claude_code import ClaudeCodeVendor
-from simple_orchestrator.vendors.github_copilot import GithubCopilotVendor
-from simple_orchestrator.vendors.opencode import OpenCodeVendor
+from simple_orchestrator_worker.db.history import SessionHistoryDB
+from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_worker.vendors.claude_code import ClaudeCodeVendor
+from simple_orchestrator_worker.vendors.github_copilot import GithubCopilotVendor
+from simple_orchestrator_worker.vendors.opencode import OpenCodeVendor
 
 # ---------------------------------------------------------------------------
 # Availability probes — run once at collection time

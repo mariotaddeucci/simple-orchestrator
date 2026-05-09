@@ -5,8 +5,8 @@ from typing import Self
 from sqlalchemy import Engine, select
 from sqlmodel import Session
 
-from simple_orchestrator.db.engine import build_engine
-from simple_orchestrator.models.session import SessionRecord
+from simple_orchestrator_worker.db.engine import build_engine
+from simple_orchestrator_worker.models.session import SessionRecord
 
 
 def _clone[T](obj: T) -> T:

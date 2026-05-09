@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from simple_orchestrator.models.session import SessionConfig
+    from simple_orchestrator_worker.models.session import SessionConfig
 
 
 class BaseAgentService(ABC):
