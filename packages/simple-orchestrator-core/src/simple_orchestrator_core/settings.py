@@ -12,9 +12,11 @@ from pydantic_settings import (
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+from ulid import ULID
 
 from .models.mcp import McpConfig
 from .models.skill import SkillConfig
+from .validators import MAX_DESCRIPTION_LENGTH, ValidULID
 
 _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
 
@@ -67,6 +69,7 @@ class WebApiSettings(_OrchestratorSettingsBase):
     task_timeout_minutes: float = Field(default=30.0, gt=0)
     max_completed_items: int = Field(default=15, ge=1)
     max_completed_age_days: int = Field(default=7, ge=1)
+    heartbeat_ttl_seconds: float = Field(default=30.0, gt=0)
 
     mcp_servers: dict[
         str,
@@ -82,9 +85,13 @@ class WorkerSettings(_OrchestratorSettingsBase):
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 
+    worker_id: ValidULID = Field(default_factory=lambda: str(ULID()))
+    worker_name: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+
     max_active_sessions: int = Field(default=4, ge=1)
     poll_interval_seconds: float = Field(default=1.0, gt=0)
     default_task_timeout_minutes: float = Field(default=30.0, gt=0)
+    heartbeat_interval_seconds: float = Field(default=10.0, gt=0)
 
 
 class TuiSettings(_OrchestratorSettingsBase):

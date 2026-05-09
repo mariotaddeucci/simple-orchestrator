@@ -7,6 +7,7 @@ import anyio
 from anyio import CapacityLimiter, create_task_group
 from simple_orchestrator_api_client import OrchestratorApiClient
 from simple_orchestrator_core.api import QueueDequeueResponse, QueueUpdateRequest
+from simple_orchestrator_core.models.worker_heartbeat import WorkerHeartbeat
 from simple_orchestrator_core.settings import WorkerSettings
 from ulid import ULID
 
@@ -34,6 +35,7 @@ class WorkerRunner:
         limiter = CapacityLimiter(self.settings.max_active_sessions)
 
         async with create_task_group() as tg:
+            tg.start_soon(self._heartbeat_loop)
             while self._stop_event and not self._stop_event.is_set():
                 lease = await self.client.dequeue_next()
                 if lease is None:
@@ -47,6 +49,21 @@ class WorkerRunner:
         self._running = False
         if self._stop_event is not None:
             self._stop_event.set()
+
+    async def _heartbeat_loop(self) -> None:
+        heartbeat = WorkerHeartbeat(
+            id=self.settings.worker_id,
+            name=self.settings.worker_name,
+            type="agent-worker",
+        )
+        while self._stop_event and not self._stop_event.is_set():
+            try:
+                await self.client.send_heartbeat(heartbeat)
+            except Exception:
+                logger.exception("heartbeat failed worker_id=%s", heartbeat.id)
+
+            with anyio.move_on_after(self.settings.heartbeat_interval_seconds):
+                await self._stop_event.wait()
 
     async def _run_lease(self, lease: QueueDequeueResponse, limiter: CapacityLimiter) -> None:
         session_config = lease.session_config

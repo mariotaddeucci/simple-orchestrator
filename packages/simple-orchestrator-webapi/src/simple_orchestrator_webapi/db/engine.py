@@ -6,7 +6,8 @@ from pathlib import Path
 import simple_orchestrator_core.models.agent_record
 import simple_orchestrator_core.models.memory_record
 import simple_orchestrator_core.models.queue_item
-import simple_orchestrator_core.models.session  # noqa: F401
+import simple_orchestrator_core.models.session
+import simple_orchestrator_core.models.worker_heartbeat_record  # noqa: F401
 from sqlalchemy import Engine
 from sqlmodel import SQLModel, create_engine
 

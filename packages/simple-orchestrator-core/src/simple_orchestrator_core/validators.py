@@ -10,6 +10,7 @@ import re
 from typing import Annotated
 
 from pydantic import AfterValidator
+from ulid import ULID
 
 _ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 _AGENT_ID_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z_\\-]{0,127}$")
@@ -26,6 +27,10 @@ MAX_NOTE_LENGTH: int = 10_000
 def _check_ulid(v: str) -> str:
     if not _ULID_RE.match(v):
         raise ValueError("must be a 26-character ULID (Crockford base32 uppercase)")
+    try:
+        ULID.from_str(v)
+    except ValueError as e:
+        raise ValueError("must be a valid ULID") from e
     return v
 
 

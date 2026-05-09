@@ -11,6 +11,8 @@ from simple_orchestrator_core.models.agent_record import AgentRecord
 from simple_orchestrator_core.models.memory_record import MemoryRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
+from simple_orchestrator_core.models.worker_heartbeat import WorkerHeartbeat
+from simple_orchestrator_core.models.worker_heartbeat_record import WorkerHeartbeatRecord
 from sqlalchemy import select, update
 from sqlmodel import Session
 from ulid import ULID
@@ -442,4 +444,36 @@ class OrchestratorDB:
             if agent_id:
                 stmt = stmt.where(MemoryRecord.agent_id == agent_id)  # type: ignore[arg-type]
             stmt = stmt.order_by(MemoryRecord.updated_at.desc())  # type: ignore[arg-type]
+            return _clone_list(list(session.execute(stmt).scalars().all()))
+
+    # ── workers ───────────────────────────────────────────────────────────────
+
+    def upsert_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> WorkerHeartbeatRecord:
+        now = datetime.now(UTC)
+        with Session(self._engine) as session:
+            record = session.get(WorkerHeartbeatRecord, heartbeat.id)
+            if record is None:
+                record = WorkerHeartbeatRecord(
+                    id=heartbeat.id,
+                    type=heartbeat.type,
+                    name=heartbeat.name,
+                    last_heartbeat_at=now,
+                )
+            else:
+                record.type = heartbeat.type
+                record.name = heartbeat.name
+                record.last_heartbeat_at = now
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return _clone(record)
+
+    def list_alive_workers(self, *, ttl_seconds: float) -> list[WorkerHeartbeatRecord]:
+        cutoff = datetime.now(UTC) - timedelta(seconds=ttl_seconds)
+        with Session(self._engine) as session:
+            stmt = (
+                select(WorkerHeartbeatRecord)
+                .where(WorkerHeartbeatRecord.last_heartbeat_at >= cutoff)  # type: ignore[arg-type]
+                .order_by(WorkerHeartbeatRecord.last_heartbeat_at.desc())  # type: ignore[arg-type]
+            )
             return _clone_list(list(session.execute(stmt).scalars().all()))

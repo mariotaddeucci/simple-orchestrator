@@ -6,7 +6,7 @@
 
 ## O que é?
 
-**simple-orchestrator** é um framework Python que coordena a execução de agentes de IA (Claude Code, OpenCode, GitHub Copilot) em background, com controle de concorrência, persistência em SQLite e um servidor [MCP](https://modelcontextprotocol.io/) que expõe ferramentas para que os próprios agentes possam delegar tarefas entre si.
+**simple-orchestrator** é um framework Python que coordena a execução de agentes de IA (Claude Code, OpenCode, GitHub Copilot) em background, com controle de concorrência e persistência em SQLite.
 
 Ideal para pipelines onde um agente "delegador" precisa distribuir trabalho para agentes especializados, ou para automatizar tarefas recorrentes (revisão de código, auditorias, relatórios) sem intervenção humana.
 
@@ -20,10 +20,8 @@ Ideal para pipelines onde um agente "delegador" precisa distribuir trabalho para
 | **Dependências entre tarefas** | Uma tarefa pode declarar `depends_on` de outras; ela só inicia após todas as dependências completarem. |
 | **Worker REST API** | Exposição de endpoints para enfileirar tarefas e acompanhar status remotamente. |
 | **Multi-vendor** | Suporta `claude_code`, `opencode` e `github_copilot` como backends de execução. |
-| **Servidor MCP integrado** | Expõe ferramentas para listar agentes, enfileirar tarefas, monitorar status e salvar memórias — acessíveis diretamente pelos agentes. |
-| **MCP local** | Conecta FastMCP apps diretamente por importlib, sem subprocesso extra. |
+| **MCP (externo)** | Conecta servidores MCP externos via `stdio`, `sse` ou `http` (opcional, por configuração). |
 | **Retomada de sessões** | Sessões interrompidas por reinício da aplicação são retomadas automaticamente. |
-| **Memória de agentes** | Agentes podem salvar e recuperar contexto entre execuções via ferramentas MCP. |
 | **TUI (cliente)** | Interface terminal separada que consome a REST API (sem acesso direto ao DB/local worker). |
 
 ---
@@ -63,19 +61,11 @@ logs_dir            = "logs"
 log_level           = "INFO"
 max_active_sessions = 4
 
-# Servidor MCP (para que agentes possam se comunicar com o orquestrador)
-mcp_server_host = "127.0.0.1"
-mcp_server_port = 8765
-
-# MCP global — disponível para todos os agentes
+# MCP servers (opcional)
 [mcp_servers.filesystem]
 type    = "stdio"
 command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
-
-[mcp_servers.orchestrator]
-type = "sse"
-url  = "http://127.0.0.1:8765/sse"
 
 # Definição de agentes
 [agents.reviewer]
@@ -94,17 +84,10 @@ logs_dir            = "logs"
 log_level           = "INFO"
 max_active_sessions = 4
 
-mcp_server_host = "127.0.0.1"
-mcp_server_port = 8765
-
 [tool.simple-orchestrator.mcp_servers.filesystem]
 type    = "stdio"
 command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
-
-[tool.simple-orchestrator.mcp_servers.orchestrator]
-type = "sse"
-url  = "http://127.0.0.1:8765/sse"
 
 [tool.simple-orchestrator.agents.reviewer]
 name    = "Code Reviewer"
@@ -147,82 +130,6 @@ uv run simple-orchestrator-tui
 
 ---
 
-## Ferramentas MCP disponíveis
-
-O servidor MCP expõe as seguintes ferramentas para os agentes:
-
-### Agentes
-
-| Ferramenta | Descrição |
-|---|---|
-| `list_agents(vendor?)` | Lista todos os agentes disponíveis (TOML + banco). Filtrável por vendor. |
-
-### Fila de tarefas
-
-| Ferramenta | Descrição |
-|---|---|
-| `enqueue_task(agent_id, prompt, depends_on?)` | Enfileira uma única tarefa para um agente. Retorna o `task_id`. |
-| `enqueue_tasks(tasks[])` | Enfileira várias tarefas de uma vez, com aliases e dependências entre elas. |
-| `list_tasks(status?, agent_id?)` | Lista tarefas na fila, com filtros opcionais. |
-| `get_task(task_id)` | Retorna os detalhes completos de uma tarefa, incluindo o `session_id`. |
-| `cancel_task(task_id)` | Cancela uma tarefa pendente. |
-
-### Sessões
-
-| Ferramenta | Descrição |
-|---|---|
-| `get_session(session_id)` | Retorna detalhes da sessão do agente criada para uma tarefa. |
-
-### Memória
-
-| Ferramenta | Descrição |
-|---|---|
-| `save_memory(agent_id, description, content)` | Salva uma memória para um agente. |
-| `list_memories(agent_id?)` | Lista memórias salvas (sem o conteúdo completo). |
-| `get_memory(memory_id)` | Recupera o conteúdo completo de uma memória. |
-| `delete_memory(memory_id)` | Remove uma memória pelo ID. |
-
----
-
-## Custom Tools
-
-Adicione ferramentas próprias aos agentes criando uma **FastMCP app** e registrando-a como MCP server local no `orchestrator.toml`. O orquestrador carrega o app via `importlib`, sem precisar de um processo extra.
-
-```python
-# my_tools/server.py
-from fastmcp import FastMCP
-
-mcp = FastMCP("my-tools")
-
-@mcp.tool()
-async def fetch_jira_ticket(ticket_id: str) -> str:
-    """Busca detalhes de um ticket no Jira."""
-    # ... implementação ...
-    return f"Ticket {ticket_id}: ..."
-
-@mcp.tool()
-async def post_slack_message(channel: str, text: str) -> str:
-    """Envia uma mensagem para um canal do Slack."""
-    # ... implementação ...
-    return "ok"
-```
-
-```toml
-# orchestrator.toml — disponível para todos os agentes
-[mcp_servers.my_tools]
-type        = "local"
-import_path = "my_tools.server:mcp"
-
-# Ou apenas para um agente específico:
-# [agents.delegator.mcp_servers.my_tools]
-# type        = "local"
-# import_path = "my_tools.server:mcp"
-```
-
-O valor de `import_path` segue a notação `"modulo.caminho:atributo"` — o atributo deve ser uma instância de `FastMCP`.
-
----
-
 ## Servidores MCP externos
 
 Para conectar ferramentas já empacotadas como servidores MCP independentes, use os tipos `stdio`, `sse` ou `http`:
@@ -247,7 +154,7 @@ type = "http"
 url  = "https://my-mcp-server.example.com/mcp"
 ```
 
-Assim como as custom tools, esses servidores podem ser declarados globalmente (para todos os agentes) ou por agente individual.
+Esses servidores podem ser declarados globalmente (para todos os agentes) ou por agente individual.
 
 ---
 
@@ -379,7 +286,6 @@ ORCHESTRATOR_TOML_FILE=/etc/orchestrator/staging.toml uv run simple-orchestrator
 
 ```bash
 uv run simple-orchestrator worker         # inicia worker (REST API + fila)
-uv run simple-orchestrator mcp-server     # inicia apenas o servidor MCP (stdio)
 uv run simple-orchestrator-tui            # abre a interface terminal (cliente REST)
 ```
 

@@ -93,7 +93,7 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "packages"]
 addopts = "-m 'not integration'"
 markers = [
     "integration: tests that require live external services (copilot, claude, opencode)",

@@ -14,6 +14,11 @@ dependencies = [
     "uvicorn>=0.35.0",
 ]
 
+[dependency-groups]
+dev = [
+    "simple-orchestrator-api-client",
+]
+
 [project.scripts]
 simple-orchestrator-webapi = "simple_orchestrator_webapi.webapi_cli:main"
 

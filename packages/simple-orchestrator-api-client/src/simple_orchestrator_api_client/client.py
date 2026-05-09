@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import httpx
 from simple_orchestrator_core.api import (
     AgentListResponse,
@@ -19,26 +17,42 @@ from simple_orchestrator_core.api import (
 from simple_orchestrator_core.models.agent_record import AgentRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
+from simple_orchestrator_core.models.worker_heartbeat import HealthResponse, WorkerHeartbeat
+from simple_orchestrator_core.node_worker import BaseNodeWorker
 
 
-class OrchestratorApiClient:
-    def __init__(self, base_url: str, *, api_key: str, timeout: float = 20.0) -> None:
+class OrchestratorApiClient(BaseNodeWorker):
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        api_key: str,
+        timeout: float = 20.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
+        self._transport = transport
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             base_url=self._base_url,
             timeout=self._timeout,
             headers=auth_headers(self._api_key),
+            transport=self._transport,
         )
 
-    async def health(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(base_url=self._base_url, timeout=10.0) as client:
+    async def health(self) -> HealthResponse:
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=10.0, transport=self._transport) as client:
             r = await client.get("/health")
             r.raise_for_status()
-            return r.json()
+            return HealthResponse.model_validate(r.json())
+
+    async def send_heartbeat(self, heartbeat: WorkerHeartbeat) -> None:
+        async with self._client() as client:
+            r = await client.post("/heartbeat", json=heartbeat.model_dump())
+            r.raise_for_status()
 
     # ── agents ───────────────────────────────────────────────────────────────
 

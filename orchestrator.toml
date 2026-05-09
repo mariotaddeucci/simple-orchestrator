@@ -16,10 +16,6 @@ api_key = "change-me"
 webapi_host = "127.0.0.1"
 webapi_port = 8765
 
-# Optional MCP server (not started by default).
-mcp_server_host = "127.0.0.1"
-mcp_server_port = 8766
-
 # ── Global MCP servers (available to all agents) ─────────────────────────────
 
 [mcp_servers.filesystem]
@@ -27,22 +23,10 @@ type    = "stdio"
 command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
-# Orchestrator MCP server — connects to the SSE endpoint started by `simple-orchestrator start`.
-# Add globally here to expose to ALL agents, or per-agent under
-# [agents.<id>.mcp_servers.orchestrator] for only the delegator agent.
-[mcp_servers.orchestrator]
-type = "sse"
-url  = "http://127.0.0.1:8766/sse"
-
 # [mcp_servers.github]
 # type = "sse"
 # url  = "http://localhost:3001/sse"
 
-# Local FastMCP app — loaded via importlib (no separate process to manage).
-# import_path uses the "module.path:attribute" notation.
-# [mcp_servers.my_tools]
-# type        = "local"
-# import_path = "my_package.tools:mcp"
 
 # ── Global skills (available to all agents) ───────────────────────────────────
 
@@ -66,9 +50,6 @@ skills = []
 #   GET  /agents
 #   GET  /agents/{id}
 
-# Example delegator agent — pulls tasks from an external source (e.g. via MCP)
-# and distributes them to the right agents via the orchestrator MCP server.
-#
 # [agents.delegator]
 # name     = "Task Delegator"
 # nickname = "delegator"
@@ -76,10 +57,6 @@ skills = []
 # model    = "claude-sonnet-4-6"
 # workdir  = "."
 # prompt_file = "prompts/delegator.md"
-#
-# [agents.delegator.mcp_servers.orchestrator]
-# type = "sse"
-# url  = "http://127.0.0.1:8765/sse"
 
 # [agents.auditor]
 # name        = "Security Auditor"
