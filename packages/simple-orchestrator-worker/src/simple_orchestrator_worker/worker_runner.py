@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 import anyio
 from anyio import CapacityLimiter, create_task_group
-from simple_orchestrator_api_client import OrchestratorApiClient
 from simple_orchestrator_core.api import EnqueueRequest, EventUpdateRequest, QueueDequeueResponse, QueueUpdateRequest
+from simple_orchestrator_core.interfaces import IOrchestratorClient
 from simple_orchestrator_core.models.worker_heartbeat import WorkerHeartbeat
 from simple_orchestrator_core.schedule import compute_next_run
 from simple_orchestrator_core.settings import WorkerSettings
@@ -19,7 +19,7 @@ logger = get_internal_logger(__name__)
 
 @dataclass
 class WorkerRunner:
-    client: OrchestratorApiClient
+    client: IOrchestratorClient
     vendors: dict[str, object]
     settings: WorkerSettings = field(default_factory=WorkerSettings)
 

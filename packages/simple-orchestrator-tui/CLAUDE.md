@@ -4,18 +4,40 @@ Scope: `packages/simple-orchestrator-tui/`.
 
 ## Why it exists
 
-- Terminal interface for queueing and monitoring sessions.
-- Consume the repository without coupling to implementations.
+- Terminal interface to enqueue and monitor sessions.
+- Consume the repository (SQLite direct or HTTP via `api-client`) without coupling to implementations.
 
 ## Main goal
 
-- Predictable and stable UX; keep the TUI as a consumer (no persistence logic here).
+Predictable, stable UX; keep the TUI as a pure client (no persistence logic here).
 
-## Development guidelines
+## Key files
 
-- Avoid direct dependency on `database`/SQL; use the injected repository.
-- Flow changes must be validated by running the TUI against the chosen mode.
+| File | What it contains |
+|---|---|
+| `src/simple_orchestrator_tui/app.py` | `OrchestratorTUI` (main Textual app) + `EnqueueModal` |
+
+## UI components
+
+**`OrchestratorTUI`** — main app:
+- `DataTable` showing the queue (live refresh).
+- Key bindings: `q` quit, `r` refresh, `a` enqueue.
+- Uses `OrchestratorApiClient` (HTTP) to fetch and update queue items.
+
+**`EnqueueModal`** — modal dialog:
+- Inputs: `agent_id`, `prompt`, `workdir`.
+- Submits via `api-client` `enqueue()`.
+
+## Development rules
+
+- No direct dependency on `database`/SQL — always go through the injected repository.
+- Flow changes must be validated by running the TUI against the chosen mode (direct DB or HTTP).
+- UI state (selected row, filters) is ephemeral — never persist it.
 
 ## Quick validation
 
-This package is normally validated via manual TUI execution; when tests exist, prefer running them per package.
+This package is validated manually by running the TUI. When unit tests exist, run them per-package:
+
+```bash
+uv run --package simple-orchestrator-tui pytest packages/simple-orchestrator-tui/
+```

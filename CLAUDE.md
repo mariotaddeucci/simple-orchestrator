@@ -1,24 +1,60 @@
 # CLAUDE.md (root)
 
-Repository guide for agents (Claude Code / Codex CLI).
+Repository guide for AI agents (Claude Code / Codex CLI).
 
 This file is **conceptual and brief**. Practical details live in each package's `CLAUDE.md`.
 Note: `AGENTS.md` at the root is a symlink to this file.
 
-## Goals
+## Purpose
 
-- Orchestrate async execution of AI agents in background (multi-vendor).
-- Persist queue/sessions/memory in SQLite.
+- Orchestrate async AI agent execution in the background (multi-vendor).
+- Persist queue / sessions / memory in SQLite.
 - Run in **standalone** mode (SQLite direct) or **distributed** mode (WebAPI + API client).
 
 ## Architecture principles
 
 - `simple-orchestrator-core` is the **contract**: Pydantic models, Protocols, and API shapes.
-- Everything else depends on `core` (not the inverse).
-- `database` implements `IOrchestratorRepository` (SQLite) and is used by `webapi`.
-- `api-client` implements the same repository via HTTP to keep consumers identical.
-- `worker` handles execution and vendors; `tui` is a repository consumer (direct DB or HTTP).
+- Everything else depends on `core` — never the reverse.
+- `database` implements `IOrchestratorRepository` (SQLite) and is consumed by `webapi`.
+- `api-client` implements the same repository interface over HTTP so consumers work identically.
+- `worker` owns execution and vendors; `tui` is a pure repository client (DB direct or HTTP).
 - Agents, MCPs, and scheduled events are managed via the REST API — not config files.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  simple-orchestrator-core                                │
+│  Protocols, models, settings, API shapes                 │
+│  Required Python ≥ 3.14                                  │
+└──────────────────────────────────────────────────────────┘
+                            ↓
+       ┌────────────────────┼────────────────────┐
+       ↓                    ↓                    ↓
+  ┌──────────┐    ┌──────────────────┐    ┌──────────────┐
+  │ database │    │     webapi       │    │  api-client  │
+  │ (SQLite) │    │  (FastAPI REST)  │    │  (HTTP)      │
+  └──────────┘    └──────────────────┘    └──────────────┘
+       ↑                    ↑                    ↑
+       └────────────────────┼────────────────────┘
+                            ↓
+       ┌────────────────────┼────────────────────┐
+       ↓                    ↓                    ↓
+   ┌────────┐         ┌──────────┐         ┌─────────┐
+   │ worker │         │   tui    │         │   cli   │
+   │(vendors│         │(Textual) │         │ (wiring)│
+   └────────┘         └──────────┘         └─────────┘
+```
+
+**Deployment modes:**
+- **Standalone:** `database` ↔ `worker`/`tui` (direct SQLite, no network)
+- **Distributed:** `webapi` ↔ `database`; `worker`/`tui` ↔ `api-client` ↔ `webapi`
+
+## IDs and keys
+
+All primary keys are **ULIDs** (time-ordered, generated at creation). Never use random UUIDs or auto-increment integers. The `worker_id` in `WorkerSettings` is also a ULID, auto-generated at startup.
+
+## Configuration
+
+Settings load from (in order of precedence): env vars → `ORCHESTRATOR_TOML_FILE` path → `orchestrator.toml` → `pyproject.toml [tool.orchestrator]`. See `core/settings.py` for all knobs.
 
 ## Working commands
 
@@ -31,7 +67,7 @@ uv run ruff format .
 uv run pyrefly check
 ```
 
-Running the system:
+Run the system:
 
 ```bash
 uv run simple-orchestrator tui        # standalone: spawns webapi + worker
@@ -50,25 +86,25 @@ uv run --package simple-orchestrator-worker     pytest packages/simple-orchestra
 
 ## Package index
 
-See also the `CLAUDE.md` inside each `packages/` subdirectory:
+See also the `CLAUDE.md` inside each folder under `packages/`:
 
-| Package | Purpose | What to work on |
+| Package | Purpose | What to do there |
 |---|---|---|
-| `packages/simple-orchestrator-core/` | Contract (models, settings, Protocols, API shapes) | Evolve schemas/validation; maintain compatibility between `webapi` and `api-client`. |
-| `packages/simple-orchestrator-database/` | SQLite persistence (repository implementation) | Edit queries/retention/locking/migrations; ensure atomicity and compatibility. |
-| `packages/simple-orchestrator-webapi/` | FastAPI REST server | Expose thin endpoints; delegate persistence to `database`; do not duplicate business rules. |
-| `packages/simple-orchestrator-api-client/` | HTTP client implementing the repository | Keep parity with `webapi` + `core/api.py`; map errors/timeouts/retries. |
-| `packages/simple-orchestrator-worker/` | Queue runner + vendors + event scheduler | Concurrency, cancellation, timeouts, logs; vendor integration (Claude/OpenCode/Copilot). |
-| `packages/simple-orchestrator-tui/` | Terminal UI (Textual) | UX and flows; consume only the repository (direct DB or HTTP). |
-| `packages/simple-orchestrator/` | CLI / entrypoints | Subcommands (`worker`, `webapi`, `tui`), settings wiring and DI. |
+| `packages/simple-orchestrator-core/` | Contract (models, settings, Protocols, API shapes) | Evolve schemas carefully; keep `webapi` and `api-client` in sync. |
+| `packages/simple-orchestrator-database/` | SQLite persistence (repository implementation) | Change queries/retention/locking; guarantee atomicity and schema compatibility. |
+| `packages/simple-orchestrator-webapi/` | FastAPI REST server | Thin routing layer; delegate persistence to `database`; no duplicated business logic. |
+| `packages/simple-orchestrator-api-client/` | HTTP client that implements the repository | Keep parity with `webapi` + `core/api.py`; map errors/timeouts/retries. |
+| `packages/simple-orchestrator-worker/` | Queue runner + vendors + event scheduler | Concurrency, cancellation, timeouts, logs; vendor integrations (Claude/OpenCode/Copilot). |
+| `packages/simple-orchestrator-tui/` | Textual terminal interface | UX and flows; consume the repository only (DB direct or HTTP). |
+| `packages/simple-orchestrator/` | CLI entrypoints | Subcommands (`worker`, `webapi`, `tui`), settings wiring, DI. |
 
-## Concept changes (guide maintenance)
+## Guide maintenance
 
-If during work you identify **a new concept**, **a new principle**, or **a recurring rule**:
+If you identify a new concept, a new invariant, or a rule that repeats:
 
-1. Include a concrete suggestion for what to add to the appropriate `CLAUDE.md` (root or package).
-2. If cross-cutting (affects multiple packages), add to root `CLAUDE.md` and reference the package.
-3. If package-specific, update only `packages/<package>/CLAUDE.md`.
+1. Include an objective suggestion in your response for what to add to the relevant `CLAUDE.md` (root or package).
+2. Cross-cutting rules → root `CLAUDE.md`, with a reference to the affected packages.
+3. Package-specific rules → `packages/<pkg>/CLAUDE.md` only.
 
 ### Worker heartbeats
 

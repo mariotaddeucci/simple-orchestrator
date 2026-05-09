@@ -4,13 +4,14 @@ version = "0.1.0"
 description = "CLI launcher for simple-orchestrator services"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = ["typer>=0.9.0"]
 
 [project.optional-dependencies]
 webapi = ["simple-orchestrator-webapi"]
 worker = ["simple-orchestrator-worker"]
 tui = ["simple-orchestrator-tui"]
-all = ["simple-orchestrator-webapi", "simple-orchestrator-worker", "simple-orchestrator-tui"]
+standalone = ["simple-orchestrator-database", "simple-orchestrator-worker", "simple-orchestrator-tui"]
+all = ["simple-orchestrator-webapi", "simple-orchestrator-worker", "simple-orchestrator-tui", "simple-orchestrator-database"]
 
 [project.scripts]
 simple-orchestrator = "simple_orchestrator:main"

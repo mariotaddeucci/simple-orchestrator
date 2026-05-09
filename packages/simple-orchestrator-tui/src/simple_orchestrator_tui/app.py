@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, ClassVar
 
-from simple_orchestrator_api_client import OrchestratorApiClient
 from simple_orchestrator_core.api import EnqueueRequest
+from simple_orchestrator_core.interfaces import IOrchestratorClient
 from simple_orchestrator_core.models.agent_record import AgentRecord
-from simple_orchestrator_core.settings import TuiSettings
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
@@ -102,15 +102,19 @@ class OrchestratorTUI(App[None]):
         ("a", "enqueue", "Enqueue"),
     ]
 
-    def __init__(self, api_url: str, *, api_key: str) -> None:
+    def __init__(
+        self,
+        client: IOrchestratorClient,
+        *,
+        background_worker: Callable[[], Coroutine[Any, Any, None]] | None = None,
+    ) -> None:
         super().__init__()
-        self._client = OrchestratorApiClient(api_url, api_key=api_key)
-        self._api_url = api_url
+        self._client = client
+        self._background_worker = background_worker
         self._agents: list[AgentRecord] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Label(f"API: {self._api_url}", id="api-url")
         with TabbedContent():
             with TabPane("Queue", id="tab-queue"):
                 yield DataTable(id="queue")
@@ -146,6 +150,9 @@ class OrchestratorTUI(App[None]):
         events_table.add_column("schedule")
         events_table.add_column("next_run")
         events_table.add_column("enabled")
+
+        if self._background_worker is not None:
+            self.run_worker(self._background_worker, exclusive=False)
 
         self.set_interval(2.0, self.action_refresh)
         self.action_refresh()
@@ -225,7 +232,7 @@ class OrchestratorTUI(App[None]):
         self.action_refresh()
 
 
-def _fmt_dt(raw: Any) -> str:
+def _fmt_dt(raw: object) -> str:
     if not raw:
         return ""
     if isinstance(raw, str):
@@ -239,5 +246,8 @@ def _fmt_dt(raw: Any) -> str:
 
 
 def main() -> None:
+    from simple_orchestrator_api_client import OrchestratorApiClient  # noqa: PLC0415
+    from simple_orchestrator_core.settings import TuiSettings  # noqa: PLC0415
+
     settings = TuiSettings()
-    OrchestratorTUI(api_url=settings.api_url, api_key=settings.api_key).run()
+    OrchestratorTUI(client=OrchestratorApiClient(settings.api_url, api_key=settings.api_key)).run()

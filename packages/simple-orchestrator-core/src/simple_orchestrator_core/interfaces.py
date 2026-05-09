@@ -5,10 +5,13 @@ from typing import Protocol
 
 from .api import (
     AgentUpsertRequest,
+    EnqueueRequest,
     EventCreateRequest,
     EventUpdateRequest,
     McpCreateRequest,
+    QueueDequeueResponse,
     QueueUpdateRequest,
+    SessionCreateRequest,
     SessionUpdateRequest,
 )
 from .models.agent_record import AgentRecord
@@ -148,3 +151,31 @@ class IOrchestratorRepository(
     def connect(self) -> None: ...
 
     def close(self) -> None: ...
+
+
+class IOrchestratorClient(Protocol):
+    """Async client contract satisfied by both OrchestratorApiClient (HTTP) and StandaloneClient (direct DB)."""
+
+    async def send_heartbeat(self, heartbeat: WorkerHeartbeat) -> None: ...
+
+    # agents
+    async def list_agents(self) -> list[AgentRecord]: ...
+
+    # queue
+    async def enqueue(self, req: EnqueueRequest) -> QueueItem: ...
+
+    async def list_queue(self, *, status: str | None = None, agent_id: str | None = None) -> list[QueueItem]: ...
+
+    async def update_queue_item(self, item_id: str, req: QueueUpdateRequest) -> QueueItem: ...
+
+    async def dequeue_next(self) -> QueueDequeueResponse | None: ...
+
+    # sessions
+    async def create_session(self, req: SessionCreateRequest) -> None: ...
+
+    async def update_session(self, session_id: str, req: SessionUpdateRequest) -> None: ...
+
+    # events
+    async def list_events(self, *, enabled: bool | None = None) -> list[EventRecord]: ...
+
+    async def update_event(self, event_id: str, req: EventUpdateRequest) -> EventRecord: ...

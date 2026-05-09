@@ -90,6 +90,7 @@ class TuiSettings(_OrchestratorSettingsBase):
     logs_dir: Path = Path("logs")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    db_path: str = "orchestrator.db"
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 

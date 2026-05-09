@@ -4,17 +4,27 @@ Scope: `packages/simple-orchestrator-api-client/`.
 
 ## Why it exists
 
-- Allow `worker`/`tui` to consume the system via HTTP **without changing consumer code**.
-- Implement the same repository contract, but by calling `webapi`.
+- Allow `worker`/`tui` to consume the system over HTTP **without changing consumer code**.
+- Implement the same `IOrchestratorRepository` contract, backed by HTTP calls to `webapi`.
 
 ## Main goal
 
-- Parity: changes to endpoints/shapes must be reflected here and in `webapi` (via `core/api.py`).
+Parity: endpoint/shape changes in `webapi` must be reflected here and in `core/api.py`.
 
-## Development guidelines
+## Key files
 
-- Map network errors/transients without inventing business rules.
-- Respect settings (URL, API key, timeouts).
+| File | What it contains |
+|---|---|
+| `src/simple_orchestrator_api_client/client.py` | `OrchestratorApiClient` — async HTTP wrapper around all `webapi` endpoints |
+
+`OrchestratorApiClient` is async. It is configured with `api_url`, `api_key`, and timeout settings from `WorkerSettings` or `TuiSettings`.
+
+## Development rules
+
+- Map network/transient errors without inventing business logic — propagate or raise as `RepositoryError`.
+- Respect settings: `api_url`, `api_key`, request timeouts.
+- Every new endpoint added to `webapi` needs a corresponding method here.
+- Do not add caching or local state — the server is the source of truth.
 
 ## Quick validation
 
