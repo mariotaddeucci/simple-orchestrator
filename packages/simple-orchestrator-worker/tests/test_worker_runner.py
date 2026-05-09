@@ -41,19 +41,18 @@ def test_build_session_config_merges_mcp_and_skills_and_workdir():
         prompt="p",
         vendor="fake",
         model="m",
-        workdir="/agent-dir",
         created_at=datetime.now(UTC),
         mcp_servers={"agent_tool": {"type": "stdio", "command": "agent-cmd", "args": []}},
         skills=["agent-skill"],
     )
     item = _queue_item(agent_id=agent.id, prompt="task")
-    item.workdir = "/task-dir"
+    item.workdir = "https://github.com/org/repo.git"
 
     cfg = build_session_config(agent=agent, item=item, global_mcps=[global_mcp])
     assert "global_tool" in cfg.mcp_servers
     assert "agent_tool" in cfg.mcp_servers
     assert "agent-skill" in cfg.skills
-    assert cfg.workdir == "/task-dir"
+    assert cfg.workdir == "https://github.com/org/repo.git"
 
 
 @pytest.mark.anyio
@@ -90,7 +89,7 @@ async def test_worker_updates_session_id_then_final_status():
         item=item,
         vendor="fake",
         timeout_minutes=None,
-        session_config=SessionConfig(prompt="task", workdir="/w"),
+        session_config=SessionConfig(prompt="task"),
     )
 
     class FakeClient:

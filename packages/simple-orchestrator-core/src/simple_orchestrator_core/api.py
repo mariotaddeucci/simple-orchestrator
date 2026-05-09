@@ -10,6 +10,7 @@ from .models.event_record import EventRecord
 from .models.mcp_record import McpRecord
 from .models.queue_item import QueueItem
 from .models.session import SessionConfig, SessionRecord
+from .validators import ValidWorkdir
 from .vendor_selector import normalize_vendor_id, parse_vendor_model_selection
 
 API_KEY_HEADER = "X-API-Key"
@@ -22,7 +23,7 @@ def auth_headers(api_key: str) -> dict[str, str]:
 class EnqueueRequest(BaseModel):
     agent_id: str
     prompt: str
-    workdir: str | None = None
+    workdir: ValidWorkdir = None
     depends_on: list[str] = Field(default_factory=list)
     item_id: str | None = None
 
@@ -70,7 +71,6 @@ class AgentUpsertRequest(BaseModel):
     nickname: str | None = None
     vendor: str | None = None
     model: str | None = None
-    workdir: str | None = None
     task_timeout_minutes: float | None = None
     prompt: str
     mcp_servers: dict = Field(default_factory=dict)
@@ -162,7 +162,7 @@ class EventCreateRequest(BaseModel):
     name: str
     agent_id: str
     prompt: str
-    workdir: str | None = None
+    workdir: ValidWorkdir = None
 
     schedule_type: Literal["interval", "cron"]
     interval_minutes: float | None = None
@@ -174,7 +174,7 @@ class EventCreateRequest(BaseModel):
 class EventUpdateRequest(BaseModel):
     name: str | None = None
     prompt: str | None = None
-    workdir: str | None = None
+    workdir: ValidWorkdir = None
     schedule_type: Literal["interval", "cron"] | None = None
     interval_minutes: float | None = None
     cron_expression: str | None = None

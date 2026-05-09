@@ -22,8 +22,8 @@ Correct persistence: atomicity (claim/dequeue), consistent status transitions, a
 
 | Table | Primary key | Notable columns |
 |---|---|---|
-| `agents` | `id` (ULID) | `name`, `nickname`, `vendor`, `model`, `workdir`, `task_timeout_minutes`, `mcp_servers` (JSON), `skills` (JSON), `skill_globs` (JSON) |
-| `queue` | `id` (ULID) | `agent_id`, `status`, `session_id`, `depends_on` (JSON), `note`, `created_at`, `started_at`, `ended_at` |
+| `agents` | `id` (ULID) | `name`, `nickname`, `vendor`, `model`, `task_timeout_minutes`, `mcp_servers` (JSON), `skills` (JSON), `skill_globs` (JSON) |
+| `queue` | `id` (ULID) | `agent_id`, `workdir` (git remote or null), `status`, `session_id`, `depends_on` (JSON), `note`, `created_at`, `started_at`, `ended_at` |
 | `sessions` | `id` (ULID) | `vendor`, `status`, `vendor_session_id`, timestamps |
 | `memory` | `id` (ULID) | `agent_id`, `description`, `content`, `updated_at` |
 | `worker_heartbeats` | `id` (ULID) | `type`, `name`, `last_heartbeat_at` |
@@ -33,7 +33,7 @@ Correct persistence: atomicity (claim/dequeue), consistent status transitions, a
 ## Key behaviors
 
 - **`dequeue_next()`** — atomically claims the next `pending` item; checks `depends_on` items are all complete before yielding.
-- **`enqueue()`** — resolves `workdir`: uses a temp dir if none given, or git root if path is inside a repo.
+- **`enqueue()`** — stores `workdir` exactly as provided (git remote URL or null). Worker resolves to a temp dir (null) or a cached clone (git remote) at execution time.
 - **`cleanup_old_completed_items()`** — keeps at most `max_items` (default 15) recent completed items, removing those older than `max_age_days` (default 7).
 - **`upsert_worker_heartbeat()`** — inserts or updates `last_heartbeat_at` for the given worker ULID.
 - **`list_alive_workers(ttl_seconds)`** — returns heartbeat records where `last_heartbeat_at >= now - ttl`.

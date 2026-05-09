@@ -28,12 +28,10 @@ def build_session_config(
     if agent.skills:
         merged_skills.extend(list(agent.skills))
 
-    workdir = item.workdir if item.workdir is not None else agent.workdir
-
     return SessionConfig(
         prompt=item.prompt,
         model=agent.model,
-        workdir=workdir,
+        workdir=item.workdir,
         mcp_servers=merged_mcps,
         skills=merged_skills,
         env={"ORCHESTRATOR_TASK_ID": item.id},

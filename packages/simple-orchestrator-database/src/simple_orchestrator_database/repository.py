@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import contextlib
 import logging
-import subprocess
-import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -43,25 +40,6 @@ def _clone[T](obj: T) -> T:
 
 def _clone_list[T](objs: list[T]) -> list[T]:
     return [_clone(o) for o in objs]
-
-
-def _resolve_workdir(workdir: str | None) -> str:
-    if workdir is None:
-        return tempfile.mkdtemp()
-
-    path = Path(workdir)
-    if path.exists() and path.is_dir():
-        with contextlib.suppress(subprocess.CalledProcessError):
-            result = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
-                cwd=path,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.strip()
-
-    return workdir
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -112,7 +90,6 @@ class OrchestratorDB:
                     prompt=req.prompt,
                     model=req.model,
                     vendor=vendor,
-                    workdir=req.workdir,
                     task_timeout_minutes=req.task_timeout_minutes,
                     mcp_servers=req.mcp_servers,
                     skills=req.skills,
@@ -125,7 +102,6 @@ class OrchestratorDB:
                 obj.prompt = req.prompt
                 obj.model = req.model
                 obj.vendor = vendor
-                obj.workdir = req.workdir
                 obj.task_timeout_minutes = req.task_timeout_minutes
                 obj.mcp_servers = req.mcp_servers
                 obj.skills = req.skills
@@ -159,7 +135,7 @@ class OrchestratorDB:
             id=item_id or _new_ulid(),
             agent_id=agent_id,
             prompt=prompt,
-            workdir=_resolve_workdir(workdir),
+            workdir=workdir,
             status="pending",
             created_at=datetime.now(UTC),
             depends_on=depends_on or [],
