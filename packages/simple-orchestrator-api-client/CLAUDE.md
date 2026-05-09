@@ -1,22 +1,32 @@
-# CLAUDE.md — `simple-orchestrator-api-client` (cliente HTTP)
+# CLAUDE.md — `simple-orchestrator-api-client` (HTTP client)
 
-Escopo: `packages/simple-orchestrator-api-client/`.
+Scope: `packages/simple-orchestrator-api-client/`.
 
-## Por que existe
+## Why it exists
 
-- Permitir que `worker`/`tui` consumam o sistema via HTTP **sem mudar o código consumidor**.
-- Implementar o mesmo contrato do repositório, só que chamando a `webapi`.
+- Allow `worker`/`tui` to consume the system over HTTP **without changing consumer code**.
+- Implement the same `IOrchestratorRepository` contract, backed by HTTP calls to `webapi`.
 
-## Objetivo principal
+## Main goal
 
-- Paridade: mudanças em endpoints/shapes devem refletir aqui e na `webapi` (via `core/api.py`).
+Parity: endpoint/shape changes in `webapi` must be reflected here and in `core/api.py`.
 
-## Como será desenvolvido
+## Key files
 
-- Mapear erros/transientes de rede sem “inventar” regras de negócio.
-- Respeitar settings (URL, API key, timeouts).
+| File | What it contains |
+|---|---|
+| `src/simple_orchestrator_api_client/client.py` | `OrchestratorApiClient` — async HTTP wrapper around all `webapi` endpoints |
 
-## Validação rápida
+`OrchestratorApiClient` is async. It is configured with `api_url`, `api_key`, and timeout settings from `WorkerSettings` or `TuiSettings`.
+
+## Development rules
+
+- Map network/transient errors without inventing business logic — propagate or raise as `RepositoryError`.
+- Respect settings: `api_url`, `api_key`, request timeouts.
+- Every new endpoint added to `webapi` needs a corresponding method here.
+- Do not add caching or local state — the server is the source of truth.
+
+## Quick validation
 
 ```bash
 uv run --package simple-orchestrator-api-client pytest packages/simple-orchestrator-api-client/
