@@ -9,7 +9,7 @@ from simple_orchestrator.polling_runner import PollingRunner
 from simple_orchestrator.queue_runner import QueueRunner
 from simple_orchestrator.settings import OrchestratorSettings
 from simple_orchestrator.tui.app import OrchestratorTUI
-from simple_orchestrator.vendors import ClaudeCodeVendor
+from simple_orchestrator.vendors import ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
 
 __all__ = ["OrchestratorTUI", "run_tui"]
 
@@ -23,12 +23,16 @@ def run_tui() -> None:
     log.info("Starting TUI")
 
     with OrchestratorDB(settings.db_path) as db:
-        vendors: dict = {"claude_code": ClaudeCodeVendor(db)}
+        vendors: dict = {
+            "claude_code": ClaudeCodeVendor(db),
+            "github_copilot": GithubCopilotVendor(db),
+            "opencode": OpenCodeVendor(db),
+        }
         runner = QueueRunner(db, vendors, settings)
         poller = PollingRunner(db, settings.pollings)
         cron_runner = CronRunner(db, settings)
 
-        app = OrchestratorTUI(db, log_file, settings, runner, poller, cron_runner)
+        app = OrchestratorTUI(db, log_file, settings, vendors, runner, poller, cron_runner)
         app.run()
 
     log.info("TUI stopped")

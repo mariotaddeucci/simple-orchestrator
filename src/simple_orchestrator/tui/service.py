@@ -70,6 +70,8 @@ class OrchestratorService:
     def list_agents(self) -> list[AgentRecord]:
         agents: list[AgentRecord] = []
         for agent_id, agent_s in self._settings.agents.items():
+            if not agent_s.vendor:
+                continue
             agents.append(
                 AgentRecord(
                     id=agent_id,

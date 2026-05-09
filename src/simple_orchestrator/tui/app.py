@@ -9,16 +9,17 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.reactive import reactive
-from textual.widgets import DataTable, Footer, Header, Label
+from textual.widgets import DataTable, Footer, Header, Label, TabbedContent, TabPane
 
 from simple_orchestrator.models.agent_record import AgentRecord
 from simple_orchestrator.tui.modals.command_palette import CommandPalette
 from simple_orchestrator.tui.modals.prompt_modal import PromptModal
 from simple_orchestrator.tui.service import OrchestratorService
-from simple_orchestrator.tui.widgets.agent_card import AgentCard
+from simple_orchestrator.tui.widgets.chat_panel import ChatPanel
 from simple_orchestrator.tui.widgets.log_panel import LogPanel
 from simple_orchestrator.tui.widgets.queue_table import QueueTable
 from simple_orchestrator.tui.widgets.scheduled_event_card import ScheduledEventCard
+from simple_orchestrator.tui.widgets.terminal_panel import TerminalPanel
 
 if TYPE_CHECKING:
     from textual.binding import BindingType
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from simple_orchestrator.polling_runner import PollingRunner
     from simple_orchestrator.queue_runner import QueueRunner
     from simple_orchestrator.settings import OrchestratorSettings
+    from simple_orchestrator.vendors.base import BaseVendor
 
 _REFRESH_INTERVAL = 2.0
 _FINISHED_LIMIT = 20
@@ -52,6 +54,7 @@ class OrchestratorTUI(App[None]):
         db: OrchestratorDB,
         log_file: Path,
         settings: OrchestratorSettings,
+        vendors: dict[str, BaseVendor],
         runner: QueueRunner | None = None,
         poller: PollingRunner | None = None,
         cron_runner: CronRunner | None = None,
@@ -60,6 +63,7 @@ class OrchestratorTUI(App[None]):
         self.service = OrchestratorService(db, settings)
         self._log_file = log_file
         self._settings = settings
+        self._vendors = vendors
         self._runner = runner
         self._poller = poller
         self._cron_runner = cron_runner
@@ -67,11 +71,8 @@ class OrchestratorTUI(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
 
-        with Vertical(id="sidebar"):
-            with ScrollableContainer(id="sidebar-agents"):
-                yield Label("👥  AGENTS", classes="section-label agents")
-            with ScrollableContainer(id="sidebar-events"):
-                yield Label("📆  SCHEDULED EVENTS", classes="section-label events")
+        with Vertical(id="sidebar"), ScrollableContainer(id="sidebar-events"):
+            yield Label("📆  SCHEDULED EVENTS", classes="section-label events")
 
         with Vertical(id="main-content"):
             with Horizontal(id="columns"):
@@ -87,7 +88,13 @@ class OrchestratorTUI(App[None]):
                     yield Label(f"✔   RECENTLY FINISHED (last {_FINISHED_LIMIT})", classes="section-label finished")
                     yield QueueTable("finished", id="finished-table", classes="finished")
 
-            yield LogPanel(self._log_file, id="log-panel")
+            with TabbedContent(id="bottom-tabs"):
+                with TabPane("Chat", id="tab-chat"):
+                    yield ChatPanel(self._settings, self._vendors, id="chat-panel")
+                with TabPane("Logs", id="tab-logs"):
+                    yield LogPanel(self._log_file, id="log-panel")
+                with TabPane("Terminal", id="tab-terminal"):
+                    yield TerminalPanel(id="terminal-panel")
 
         yield Footer()
 
@@ -214,20 +221,10 @@ class OrchestratorTUI(App[None]):
         self.query_one(".section-label.pending", Label).update(f"⏳  PENDING  [{len(pending)}]")
         self.query_one(".section-label.running", Label).update(f"▶   RUNNING  [{len(running)}]")
         self.query_one(".section-label.finished", Label).update(f"✔   RECENTLY FINISHED  [{len(finished)}]")
-        self.query_one(".section-label.agents", Label).update(f"👥  AGENTS  [{len(agents)}]")
         self.query_one(".section-label.events", Label).update(f"📆  SCHEDULED EVENTS  [{len(events)}]")
 
-        self._refresh_sidebar_agents(agents)
         self._refresh_sidebar_events(events)
         self.query_one(LogPanel).refresh_logs()
-
-    def _refresh_sidebar_agents(self, agents: list[AgentRecord]) -> None:
-        container = self.query_one("#sidebar-agents", ScrollableContainer)
-        children = list(container.children)
-        for child in children[1:]:
-            child.remove()
-        for agent in agents:
-            container.mount(AgentCard(agent))
 
     def _refresh_sidebar_events(self, events: list) -> None:
         container = self.query_one("#sidebar-events", ScrollableContainer)
