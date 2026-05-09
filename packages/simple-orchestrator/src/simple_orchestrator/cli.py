@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
+import time
 from types import ModuleType
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="simple-orchestrator")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("webapi", help="Start the Web API (DB mediator)")
-    subparsers.add_parser("worker", help="Start the worker (polls the Web API)")
+    subparsers.add_parser("webapi", help="Start the Web API")
+    subparsers.add_parser("worker", help="Start the worker")
     subparsers.add_parser("start", help="Alias for 'webapi'")
-    subparsers.add_parser("tui", help="Start the TUI (REST API client)")
+    tui_parser = subparsers.add_parser("tui", help="Start the TUI (standalone: spawns webapi+worker)")
+    tui_parser.add_argument(
+        "--distributed",
+        action="store_true",
+        help="Connect to an existing WebAPI instead of spawning one",
+    )
 
     args = parser.parse_args()
 
@@ -24,7 +31,7 @@ def main() -> None:
         return
 
     if args.command == "tui":
-        _run_tui()
+        _run_tui(distributed=getattr(args, "distributed", False))
         return
 
     parser.print_help()
@@ -54,6 +61,40 @@ def _run_webapi() -> None:
     webapi_cli.main()
 
 
-def _run_tui() -> None:
-    tui = _import_or_exit("simple_orchestrator_tui", extra="tui")
-    tui.main()
+def _run_tui(*, distributed: bool = False) -> None:
+    from simple_orchestrator_core.settings import TuiSettings  # noqa: PLC0415
+
+    settings = TuiSettings()
+    standalone = settings.standalone and not distributed
+
+    if not standalone:
+        tui = _import_or_exit("simple_orchestrator_tui", extra="tui")
+        tui.main()
+        return
+
+    webapi_proc = subprocess.Popen(
+        [sys.executable, "-m", "simple_orchestrator", "webapi"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    worker_proc = subprocess.Popen(
+        [sys.executable, "-m", "simple_orchestrator", "worker"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Give webapi time to start
+    time.sleep(1.5)
+
+    try:
+        tui = _import_or_exit("simple_orchestrator_tui", extra="tui")
+        tui.main()
+    finally:
+        worker_proc.terminate()
+        webapi_proc.terminate()
+        try:
+            worker_proc.wait(timeout=5)
+            webapi_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            worker_proc.kill()
+            webapi_proc.kill()

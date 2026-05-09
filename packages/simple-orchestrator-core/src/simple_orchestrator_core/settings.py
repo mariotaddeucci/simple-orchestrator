@@ -92,3 +92,5 @@ class TuiSettings(_OrchestratorSettingsBase):
 
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
+
+    standalone: bool = True
