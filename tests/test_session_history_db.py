@@ -3,9 +3,8 @@
 from datetime import UTC, datetime
 
 import pytest
-
-from simple_orchestrator.db.history import SessionHistoryDB
-from simple_orchestrator.models.session import SessionRecord
+from simple_orchestrator_worker.db.history import SessionHistoryDB
+from simple_orchestrator_worker.models.session import SessionRecord
 
 
 def _make_record(

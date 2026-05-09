@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING, Any
 import anyio
 from ulid import ULID
 
-from simple_orchestrator.logging_config import get_vendor_logger
-from simple_orchestrator.models.session import SessionConfig, SessionRecord
+from simple_orchestrator_worker.logging_config import get_vendor_logger
+from simple_orchestrator_worker.models.session import SessionConfig, SessionRecord
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from simple_orchestrator.db.history import SessionHistoryDB
-    from simple_orchestrator.models.model import ModelInfo
+    from simple_orchestrator_worker.db.history import SessionHistoryDB
+    from simple_orchestrator_worker.models.model import ModelInfo
 
 logger = get_vendor_logger(__name__)
 

@@ -1,28 +1,16 @@
 [project]
-name = "simple-orchestrator"
+name = "simple-orchestrator-workspace"
 version = "0.1.0"
-description = "Add your description here"
+description = "Workspace for the simple-orchestrator packages"
 readme = "README.md"
 authors = [
     { name = "Mario Taddeucci", email = "mariotaddeucci@gmx.com" }
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "anyio>=4.7.0",
-    "claude-agent-sdk>=0.1.72",
-    "github-copilot-sdk>=0.3.0",
-    "opencode-ai>=0.1.0a36",
-    "fastmcp>=2.0.0",
-    "fastapi>=0.115.0",
-    "pydantic>=2.13.3",
-    "pydantic-settings>=2.14.0",
-    "python-ulid>=3.1.0",
-    "uvicorn>=0.35.0",
-    "sqlmodel>=0.0.38",
+    "simple-orchestrator",
+    "simple-orchestrator-worker",
 ]
-
-[project.scripts]
-simple-orchestrator = "simple_orchestrator:main"
 
 [dependency-groups]
 dev = [
@@ -34,8 +22,11 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.0,<0.12.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
 
 [tool.ruff]
 line-length = 120
@@ -105,11 +96,18 @@ markers = [
 ]
 
 [tool.pyrefly]
-project_includes = ["src"]
+project_includes = [
+    "packages/simple-orchestrator-worker/src/simple_orchestrator_worker",
+]
 
 [tool.uv.workspace]
-members = ["packages/simple-orchestrator-tui"]
+members = [
+    "packages/simple-orchestrator",
+    "packages/simple-orchestrator-tui",
+    "packages/simple-orchestrator-worker",
+]
 
 [tool.uv.sources]
 simple-orchestrator = { workspace = true }
 simple-orchestrator-tui = { workspace = true }
+simple-orchestrator-worker = { workspace = true }

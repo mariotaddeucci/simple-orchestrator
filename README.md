@@ -260,7 +260,7 @@ Use `enqueue_tasks` com `alias` e `depends_on` para expressar pipelines complexo
 ```python
 # Via Python diretamente
 import asyncio
-from simple_orchestrator.db.orchestrator import OrchestratorDB
+from simple_orchestrator_worker.db.orchestrator import OrchestratorDB
 
 async def main():
     async with OrchestratorDB("orchestrator.db") as db:
@@ -292,9 +292,9 @@ Para integrar um novo backend de IA, herde `BaseVendor` e implemente os métodos
 from collections.abc import AsyncIterator
 from typing import Any
 
-from simple_orchestrator.vendors.base import BaseVendor
-from simple_orchestrator.models.session import SessionConfig
-from simple_orchestrator.models.model import ModelInfo
+from simple_orchestrator_worker.vendors.base import BaseVendor
+from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_worker.models.model import ModelInfo
 
 
 class MyCustomVendor(BaseVendor):
@@ -324,9 +324,9 @@ class MyCustomVendor(BaseVendor):
 Registre o vendor ao iniciar o orquestrador:
 
 ```python
-from simple_orchestrator.db.orchestrator import OrchestratorDB
-from simple_orchestrator.queue_runner import QueueRunner
-from simple_orchestrator.vendors.claude_code import ClaudeCodeVendor
+from simple_orchestrator_worker.db.orchestrator import OrchestratorDB
+from simple_orchestrator_worker.queue_runner import QueueRunner
+from simple_orchestrator_worker.vendors.claude_code import ClaudeCodeVendor
 
 db = OrchestratorDB("orchestrator.db")
 vendors = {

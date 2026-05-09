@@ -4,11 +4,11 @@ import logging
 from datetime import UTC, datetime
 
 import pytest
+from simple_orchestrator_worker.db.orchestrator import OrchestratorDB
+from simple_orchestrator_worker.models.agent_record import AgentRecord
+from simple_orchestrator_worker.queue_runner import QueueRunner
+from simple_orchestrator_worker.settings import AgentSettings, OrchestratorSettings
 
-from simple_orchestrator.db.orchestrator import OrchestratorDB
-from simple_orchestrator.models.agent_record import AgentRecord
-from simple_orchestrator.queue_runner import QueueRunner
-from simple_orchestrator.settings import AgentSettings, OrchestratorSettings
 from tests.test_mock_agent import MockAgent
 
 logger = logging.getLogger(__name__)

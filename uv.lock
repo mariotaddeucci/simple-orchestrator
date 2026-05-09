@@ -6,6 +6,8 @@ requires-python = ">=3.14"
 members = [
     "simple-orchestrator",
     "simple-orchestrator-tui",
+    "simple-orchestrator-worker",
+    "simple-orchestrator-workspace",
 ]
 
 [[package]]
@@ -1183,7 +1185,48 @@ wheels = [
 [[package]]
 name = "simple-orchestrator"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "packages/simple-orchestrator" }
+
+[package.optional-dependencies]
+all = [
+    { name = "simple-orchestrator-tui" },
+    { name = "simple-orchestrator-worker" },
+]
+tui = [
+    { name = "simple-orchestrator-tui" },
+]
+worker = [
+    { name = "simple-orchestrator-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "simple-orchestrator-tui", marker = "extra == 'all'", editable = "packages/simple-orchestrator-tui" },
+    { name = "simple-orchestrator-tui", marker = "extra == 'tui'", editable = "packages/simple-orchestrator-tui" },
+    { name = "simple-orchestrator-worker", marker = "extra == 'all'", editable = "packages/simple-orchestrator-worker" },
+    { name = "simple-orchestrator-worker", marker = "extra == 'worker'", editable = "packages/simple-orchestrator-worker" },
+]
+provides-extras = ["worker", "tui", "all"]
+
+[[package]]
+name = "simple-orchestrator-tui"
+version = "0.1.0"
+source = { editable = "packages/simple-orchestrator-tui" }
+dependencies = [
+    { name = "httpx" },
+    { name = "textual" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "textual", specifier = ">=3.0.0" },
+]
+
+[[package]]
+name = "simple-orchestrator-worker"
+version = "0.1.0"
+source = { editable = "packages/simple-orchestrator-worker" }
 dependencies = [
     { name = "anyio" },
     { name = "claude-agent-sdk" },
@@ -1196,15 +1239,6 @@ dependencies = [
     { name = "python-ulid" },
     { name = "sqlmodel" },
     { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "anyio", extra = ["trio"] },
-    { name = "prek" },
-    { name = "pyrefly" },
-    { name = "pytest" },
-    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -1222,6 +1256,30 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
+[[package]]
+name = "simple-orchestrator-workspace"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "simple-orchestrator" },
+    { name = "simple-orchestrator-worker" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "anyio", extra = ["trio"] },
+    { name = "prek" },
+    { name = "pyrefly" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "simple-orchestrator", editable = "packages/simple-orchestrator" },
+    { name = "simple-orchestrator-worker", editable = "packages/simple-orchestrator-worker" },
+]
+
 [package.metadata.requires-dev]
 dev = [
     { name = "anyio", extras = ["trio"], specifier = ">=4.7.0" },
@@ -1229,23 +1287,6 @@ dev = [
     { name = "pyrefly", specifier = ">=0.63.1" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.12" },
-]
-
-[[package]]
-name = "simple-orchestrator-tui"
-version = "0.1.0"
-source = { editable = "packages/simple-orchestrator-tui" }
-dependencies = [
-    { name = "httpx" },
-    { name = "simple-orchestrator" },
-    { name = "textual" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "simple-orchestrator", editable = "." },
-    { name = "textual", specifier = ">=3.0.0" },
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ Bundled skills
 
 Example (Python)::
 
-    from simple_orchestrator.skills import get_skill_path
+    from simple_orchestrator_worker.skills import get_skill_path
     skill_path = get_skill_path("queue-tasks")
 """
 

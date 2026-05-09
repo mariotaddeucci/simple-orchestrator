@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import pytest
-
-from simple_orchestrator.settings import AgentSettings
-from simple_orchestrator.vendor_selector import parse_vendor_model_selection
+from simple_orchestrator_worker.settings import AgentSettings
+from simple_orchestrator_worker.vendor_selector import parse_vendor_model_selection
 
 
 def test_parse_vendor_model_selection_normalizes_aliases():

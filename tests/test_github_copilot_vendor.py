@@ -4,11 +4,10 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from simple_orchestrator.db.history import SessionHistoryDB
-from simple_orchestrator.models.model import ModelInfo
-from simple_orchestrator.models.session import SessionConfig
-from simple_orchestrator.vendors.github_copilot import GithubCopilotVendor
+from simple_orchestrator_worker.db.history import SessionHistoryDB
+from simple_orchestrator_worker.models.model import ModelInfo
+from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_worker.vendors.github_copilot import GithubCopilotVendor
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -85,7 +84,7 @@ def test_list_models_returns_github_copilot_vendor(history_db):
 
     vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
 
-    with patch("simple_orchestrator.vendors.github_copilot.CopilotClient", return_value=client):
+    with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
         models = asyncio.run(vendor.list_models())
 
     assert len(models) == 1
@@ -106,7 +105,7 @@ def test_execute_session_passes_gpt41_model(history_db):
     config = SessionConfig(prompt="hello", model="gpt-4.1")
 
     async def run():
-        with patch("simple_orchestrator.vendors.github_copilot.CopilotClient", return_value=client):
+        with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
             stream = await vendor.execute_session(config)
             return [e async for e in stream]
 
@@ -130,7 +129,7 @@ def test_execute_session_falls_back_to_instance_model(history_db):
     config = SessionConfig(prompt="hello", model=None)
 
     async def run():
-        with patch("simple_orchestrator.vendors.github_copilot.CopilotClient", return_value=client):
+        with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
             stream = await vendor.execute_session(config)
             async for _ in stream:
                 pass
@@ -149,7 +148,7 @@ def test_run_session_passes_gpt41_model(history_db):
     vendor = GithubCopilotVendor(history_db, model="gpt-4o")
     config = SessionConfig(prompt="do something", model="gpt-4.1")
 
-    with patch("simple_orchestrator.vendors.github_copilot.CopilotClient", return_value=client):
+    with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
         asyncio.run(vendor._run_session("test-session-id", config))
 
     client.create_session.assert_awaited_once()
@@ -175,7 +174,7 @@ def test_full_run_sync_flow_with_gpt41(history_db):
     vendor = GithubCopilotVendor(history_db, model="gpt-4o")
     config = SessionConfig(prompt="write tests", model="gpt-4.1", workdir="/tmp/test")
 
-    with patch("simple_orchestrator.vendors.github_copilot.CopilotClient", return_value=client):
+    with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
         session_id, final_status = anyio.run(vendor.run, config)
 
     assert final_status == "completed"

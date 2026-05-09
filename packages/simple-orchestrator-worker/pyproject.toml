@@ -1,0 +1,26 @@
+[project]
+name = "simple-orchestrator-worker"
+version = "0.1.0"
+description = "Async worker + REST API for simple-orchestrator"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "anyio>=4.7.0",
+    "claude-agent-sdk>=0.1.72",
+    "fastapi>=0.115.0",
+    "fastmcp>=2.0.0",
+    "github-copilot-sdk>=0.3.0",
+    "opencode-ai>=0.1.0a36",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+    "python-ulid>=3.1.0",
+    "sqlmodel>=0.0.38",
+    "uvicorn>=0.35.0",
+]
+
+[project.scripts]
+simple-orchestrator-worker = "simple_orchestrator_worker.worker_cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"

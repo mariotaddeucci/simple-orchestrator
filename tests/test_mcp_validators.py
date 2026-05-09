@@ -6,10 +6,8 @@ path traversal, and whitelist constraints.
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
-from ulid import ULID
-
-from simple_orchestrator.mcp_server import _TaskSpec
-from simple_orchestrator.validators import (
+from simple_orchestrator_worker.mcp_server import _TaskSpec
+from simple_orchestrator_worker.validators import (
     MAX_DESCRIPTION_LENGTH,
     MAX_MEMORY_CONTENT_LENGTH,
     MAX_PROMPT_LENGTH,
@@ -20,6 +18,7 @@ from simple_orchestrator.validators import (
     ValidULID,
     ValidWorkdir,
 )
+from ulid import ULID
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

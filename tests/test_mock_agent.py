@@ -5,10 +5,10 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from simple_orchestrator.db.history import SessionHistoryDB
-from simple_orchestrator.models.model import ModelInfo
-from simple_orchestrator.models.session import SessionConfig
-from simple_orchestrator.vendors.base import BaseVendor
+from simple_orchestrator_worker.db.history import SessionHistoryDB
+from simple_orchestrator_worker.models.model import ModelInfo
+from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_worker.vendors.base import BaseVendor
 
 logger = logging.getLogger(__name__)
 
