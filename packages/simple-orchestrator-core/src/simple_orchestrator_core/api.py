@@ -6,6 +6,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from .models.agent_record import AgentRecord
+from .models.event_record import EventRecord
+from .models.mcp_record import McpRecord
 from .models.queue_item import QueueItem
 from .models.session import SessionConfig, SessionRecord
 from .vendor_selector import normalize_vendor_id, parse_vendor_model_selection
@@ -124,3 +126,57 @@ class SessionUpdateRequest(BaseModel):
     status: str
     ended_at: datetime | None = None
     vendor_session_id: str | None = None
+
+
+# ── MCP ──────────────────────────────────────────────────────────────────────
+
+
+class McpListResponse(BaseModel):
+    mcps: list[McpRecord]
+
+
+class McpCreateRequest(BaseModel):
+    id: str
+    name: str
+    type: Literal["stdio", "sse", "http"]
+
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+
+    url: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
+
+    is_global: bool = True
+    enabled: bool = True
+
+
+# ── Events ───────────────────────────────────────────────────────────────────
+
+
+class EventListResponse(BaseModel):
+    events: list[EventRecord]
+
+
+class EventCreateRequest(BaseModel):
+    name: str
+    agent_id: str
+    prompt: str
+    workdir: str | None = None
+
+    schedule_type: Literal["interval", "cron"]
+    interval_minutes: float | None = None
+    cron_expression: str | None = None
+
+    enabled: bool = True
+
+
+class EventUpdateRequest(BaseModel):
+    name: str | None = None
+    prompt: str | None = None
+    workdir: str | None = None
+    schedule_type: Literal["interval", "cron"] | None = None
+    interval_minutes: float | None = None
+    cron_expression: str | None = None
+    next_run: datetime | None = None
+    enabled: bool | None = None

@@ -7,13 +7,23 @@ import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from simple_orchestrator_core.api import AgentUpsertRequest, QueueUpdateRequest, SessionUpdateRequest
+from simple_orchestrator_core.api import (
+    AgentUpsertRequest,
+    EventCreateRequest,
+    EventUpdateRequest,
+    McpCreateRequest,
+    QueueUpdateRequest,
+    SessionUpdateRequest,
+)
 from simple_orchestrator_core.models.agent_record import AgentRecord
+from simple_orchestrator_core.models.event_record import EventRecord
+from simple_orchestrator_core.models.mcp_record import McpRecord
 from simple_orchestrator_core.models.memory_record import MemoryRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
 from simple_orchestrator_core.models.worker_heartbeat import WorkerHeartbeat
 from simple_orchestrator_core.models.worker_heartbeat_record import WorkerHeartbeatRecord
+from simple_orchestrator_core.schedule import compute_next_run
 from sqlalchemy import select, update
 from sqlmodel import Session
 from ulid import ULID
@@ -476,3 +486,150 @@ class OrchestratorDB:
                 .order_by(WorkerHeartbeatRecord.last_heartbeat_at.desc())  # type: ignore[arg-type]
             )
             return _clone_list(list(session.execute(stmt).scalars().all()))
+
+    # ── mcps ─────────────────────────────────────────────────────────────────
+
+    def list_mcps(self, *, is_global: bool | None = None, enabled: bool | None = None) -> list[McpRecord]:
+        with Session(self._engine) as session:
+            stmt = select(McpRecord).order_by(McpRecord.created_at.desc())  # type: ignore[arg-type]
+            results = _clone_list(list(session.execute(stmt).scalars().all()))
+        if is_global is not None:
+            results = [m for m in results if m.is_global == is_global]
+        if enabled is not None:
+            results = [m for m in results if m.enabled == enabled]
+        return results
+
+    def get_mcp(self, mcp_id: str) -> McpRecord | None:
+        with Session(self._engine) as session:
+            obj = session.get(McpRecord, mcp_id)
+            return _clone(obj) if obj else None
+
+    def upsert_mcp(self, req: McpCreateRequest) -> McpRecord:
+        now = datetime.now(UTC)
+        with Session(self._engine) as session:
+            obj = session.get(McpRecord, req.id)
+            if obj is None:
+                obj = McpRecord(
+                    id=req.id,
+                    name=req.name,
+                    type=req.type,
+                    command=req.command,
+                    args=req.args,
+                    env=req.env,
+                    url=req.url,
+                    headers=req.headers,
+                    is_global=req.is_global,
+                    enabled=req.enabled,
+                    created_at=now,
+                )
+            else:
+                obj.name = req.name
+                obj.type = req.type
+                obj.command = req.command
+                obj.args = req.args
+                obj.env = req.env
+                obj.url = req.url
+                obj.headers = req.headers
+                obj.is_global = req.is_global
+                obj.enabled = req.enabled
+            session.add(obj)
+            session.commit()
+            session.refresh(obj)
+            return _clone(obj)
+
+    def delete_mcp(self, mcp_id: str) -> bool:
+        with Session(self._engine) as session:
+            obj = session.get(McpRecord, mcp_id)
+            if not obj:
+                return False
+            session.delete(obj)
+            session.commit()
+            return True
+
+    # ── events ────────────────────────────────────────────────────────────────
+
+    def list_events(self, *, enabled: bool | None = None) -> list[EventRecord]:
+        with Session(self._engine) as session:
+            stmt = select(EventRecord).order_by(EventRecord.created_at.desc())  # type: ignore[arg-type]
+            results = _clone_list(list(session.execute(stmt).scalars().all()))
+        if enabled is not None:
+            results = [e for e in results if e.enabled == enabled]
+        return results
+
+    def get_event(self, event_id: str) -> EventRecord | None:
+        with Session(self._engine) as session:
+            obj = session.get(EventRecord, event_id)
+            return _clone(obj) if obj else None
+
+    def create_event(self, req: EventCreateRequest) -> EventRecord:
+        now = datetime.now(UTC)
+        next_run = compute_next_run(
+            req.schedule_type,
+            interval_minutes=req.interval_minutes,
+            cron_expression=req.cron_expression,
+            base=now,
+        )
+        record = EventRecord(
+            id=_new_ulid(),
+            name=req.name,
+            agent_id=req.agent_id,
+            prompt=req.prompt,
+            workdir=req.workdir,
+            schedule_type=req.schedule_type,
+            interval_minutes=req.interval_minutes,
+            cron_expression=req.cron_expression,
+            next_run=next_run,
+            enabled=req.enabled,
+            created_at=now,
+            updated_at=now,
+        )
+        with Session(self._engine) as session:
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return _clone(record)
+
+    def update_event(self, event_id: str, req: EventUpdateRequest) -> EventRecord | None:
+        now = datetime.now(UTC)
+        fields = req.model_dump(exclude_none=True)
+        with Session(self._engine) as session:
+            obj = session.get(EventRecord, event_id)
+            if not obj:
+                return None
+            for k, v in fields.items():
+                setattr(obj, k, v)
+            obj.updated_at = now
+            session.add(obj)
+            session.commit()
+            session.refresh(obj)
+            return _clone(obj)
+
+    def delete_event(self, event_id: str) -> bool:
+        with Session(self._engine) as session:
+            obj = session.get(EventRecord, event_id)
+            if not obj:
+                return False
+            session.delete(obj)
+            session.commit()
+            return True
+
+    def get_due_events(self) -> list[EventRecord]:
+        now = datetime.now(UTC)
+        with Session(self._engine) as session:
+            stmt = (
+                select(EventRecord)
+                .where(EventRecord.next_run <= now)  # type: ignore[arg-type]
+                .order_by(EventRecord.next_run)  # type: ignore[arg-type]
+            )
+            results = _clone_list(list(session.execute(stmt).scalars().all()))
+        return [e for e in results if e.enabled]
+
+    def update_next_run(self, event_id: str, next_run: datetime) -> None:
+        now = datetime.now(UTC)
+        with Session(self._engine) as session:
+            obj = session.get(EventRecord, event_id)
+            if obj:
+                obj.next_run = next_run
+                obj.updated_at = now
+                session.add(obj)
+                session.commit()
