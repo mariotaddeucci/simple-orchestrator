@@ -7,6 +7,7 @@ from .queue_item import QueueItem
 from .session import SessionConfig, SessionRecord
 from .skill import SkillConfig
 from .worker_heartbeat import HealthResponse, WorkerHeartbeat, WorkerHeartbeatStatus, WorkerType
+from .worker_heartbeat_record import WorkerHeartbeatRecord
 
 __all__ = [
     "AgentConfig",
@@ -23,6 +24,7 @@ __all__ = [
     "SessionRecord",
     "SkillConfig",
     "WorkerHeartbeat",
+    "WorkerHeartbeatRecord",
     "WorkerHeartbeatStatus",
     "WorkerType",
 ]

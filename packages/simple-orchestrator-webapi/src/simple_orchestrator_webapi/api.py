@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 import anyio
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Response
@@ -22,6 +22,12 @@ from simple_orchestrator_core.api import (
 from simple_orchestrator_core.models.agent_record import AgentRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
+from simple_orchestrator_core.models.worker_heartbeat import (
+    HealthResponse,
+    WorkerHeartbeat,
+    WorkerHeartbeatStatus,
+    WorkerType,
+)
 from simple_orchestrator_core.settings import WebApiSettings
 
 from .db.orchestrator import OrchestratorDB
@@ -56,7 +62,28 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health() -> dict[str, str]:
+async def health(request: Request) -> HealthResponse:
+    state = _state(request)
+    records = await anyio.to_thread.run_sync(
+        lambda: state.db.list_alive_workers(ttl_seconds=state.settings.heartbeat_ttl_seconds),
+    )
+    return HealthResponse(
+        workers=[
+            WorkerHeartbeatStatus(
+                id=r.id,
+                type=cast("WorkerType", r.type),
+                name=r.name,
+                last_heartbeat_at=r.last_heartbeat_at,
+            )
+            for r in records
+        ],
+    )
+
+
+@router.post("/heartbeat", dependencies=[Depends(_require_api_key)])
+async def send_heartbeat(request: Request, heartbeat: WorkerHeartbeat) -> dict[str, str]:
+    db = _state(request).db
+    await anyio.to_thread.run_sync(lambda: db.upsert_worker_heartbeat(heartbeat))
     return {"status": "ok"}
 
 

@@ -21,4 +21,5 @@ class WorkerHeartbeatStatus(WorkerHeartbeat):
 
 
 class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
     workers: list[WorkerHeartbeatStatus] = Field(default_factory=list)
