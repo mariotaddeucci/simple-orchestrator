@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from simple_orchestrator_worker.db.orchestrator import OrchestratorDB
-from simple_orchestrator_worker.models.session import SessionRecord
+from simple_orchestrator_core.models.session import SessionRecord
+from simple_orchestrator_webapi.db.orchestrator import OrchestratorDB
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def db(tmp_path):
 
 
 def test_enqueue_and_dequeue(db):
-    # Use a direct agent_id (agents are no longer in DB, only in TOML config)
+    # Use a direct agent_id (agents are stored separately; queue does not enforce it at DB layer)
     agent_id = "test-agent-1"
 
     item = db.enqueue(agent_id, "Do the task")

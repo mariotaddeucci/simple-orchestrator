@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from simple_orchestrator_core.settings import WorkerSettings
+
 from simple_orchestrator_worker.logging_config import get_internal_logger, setup_logging
-from simple_orchestrator_worker.settings import OrchestratorSettings
+from simple_orchestrator_worker.worker_service import run_worker_forever
 
 
 def main() -> None:
-    settings = OrchestratorSettings()
+    settings = WorkerSettings()
     setup_logging(settings.logs_dir, settings.log_level)
 
     log = get_internal_logger(__name__)
-    log.info("Starting worker — REST API at http://%s:%d", settings.api_host, settings.api_port)
+    log.info("Starting worker — polling %s", settings.api_url)
 
-    import uvicorn  # noqa: PLC0415
+    import anyio  # noqa: PLC0415
 
-    uvicorn.run("simple_orchestrator_worker.api:app", host=settings.api_host, port=settings.api_port, log_level="info")
+    anyio.run(run_worker_forever, settings)

@@ -5,10 +5,16 @@ db_path             = "orchestrator.db"
 logs_dir            = "logs"
 log_level           = "INFO"          # DEBUG | INFO | WARNING | ERROR | CRITICAL
 max_active_sessions = 4
+default_task_timeout_minutes = 30.0
+poll_interval_seconds = 1.0
 
-# Worker REST API (uv run simple-orchestrator worker).
-api_host = "127.0.0.1"
-api_port = 8765
+# Shared API key used by TUI + worker to talk to the Web API.
+# Override via env: ORCHESTRATOR_API_KEY="..."
+api_key = "change-me"
+
+# Web API (uv run simple-orchestrator webapi).
+webapi_host = "127.0.0.1"
+webapi_port = 8765
 
 # Optional MCP server (not started by default).
 mcp_server_host = "127.0.0.1"
@@ -54,26 +60,11 @@ skills = []
 # interval_minutes = 30
 
 # ── Agents ────────────────────────────────────────────────────────────────────
-# Keys become agent IDs — use them in db.enqueue("reviewer", "do this task").
-# Prompts: inline via `prompt` OR path to a markdown file via `prompt_file`.
-#
-# Delegator pattern:
-#   1. Add a delegator agent with the orchestrator MCP server configured.
-#   2. The delegator calls list_agents → enqueue_task for each work item.
-#   3. QueueRunner dispatches enqueued tasks to the target agents.
-#   4. Delegator polls list_tasks(status="completed") or get_task to read results.
-
-[agents.reviewer]
-name     = "Code Reviewer"
-nickname = "reviewer"
-model    = "claude-code/claude-sonnet-4-6"
-workdir  = "."
-prompt   = """
-You are an expert code reviewer. Analyse the code changes and provide structured feedback.
-
-## Output format
-Return findings as a markdown list grouped by: Bugs / Security / Performance / Style.
-"""
+# Agents are now stored in the database.
+# Use the Web API endpoints to manage them (examples):
+#   POST /agents  (upsert)
+#   GET  /agents
+#   GET  /agents/{id}
 
 # Example delegator agent — pulls tasks from an external source (e.g. via MCP)
 # and distributes them to the right agents via the orchestrator MCP server.

@@ -4,23 +4,23 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import anyio
+from simple_orchestrator_core.models.session import SessionConfig, SessionRecord
 from ulid import ULID
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
-from simple_orchestrator_worker.models.session import SessionConfig, SessionRecord
+from simple_orchestrator_worker.session_store import SessionStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from simple_orchestrator_worker.db.history import SessionHistoryDB
-    from simple_orchestrator_worker.models.model import ModelInfo
+    from simple_orchestrator_core.models.model import ModelInfo
 
 logger = get_vendor_logger(__name__)
 
 
 class BaseVendor(ABC):
-    def __init__(self, db: SessionHistoryDB) -> None:
-        self._db = db
+    def __init__(self, session_store: SessionStore) -> None:
+        self._store = session_store
 
     @property
     @abstractmethod
@@ -30,14 +30,20 @@ class BaseVendor(ABC):
         """Best-effort kill for an in-flight vendor session."""
         with anyio.CancelScope(shield=True):
             await self._vendor_kill(session_id)
-        self._db.update_status(session_id, "killed", datetime.now(UTC))
+        await self._store.update_status(session_id, "killed", ended_at=datetime.now(UTC))
 
-    async def run(self, config: SessionConfig, timeout_minutes: float = 30.0) -> tuple[str, str]:
+    async def run(
+        self,
+        config: SessionConfig,
+        *,
+        timeout_minutes: float = 30.0,
+        session_id: str | None = None,
+    ) -> tuple[str, str]:
         """Run a vendor session. Returns (session_id, final_status). Blocks until done.
 
         Compatible with both asyncio and trio backends via anyio.
         """
-        session_id = str(ULID())
+        session_id = session_id or str(ULID())
         workdir = config.workdir or tempfile.mkdtemp()
         if workdir != config.workdir:
             config = config.model_copy(update={"workdir": workdir})
@@ -50,7 +56,7 @@ class BaseVendor(ABC):
             started_at=datetime.now(UTC),
             status="running",
         )
-        self._db.save(record)
+        await self._store.save(record)
         logger.info("Starting vendor session session_id=%s vendor=%s workdir=%s", session_id, self.vendor_name, workdir)
 
         try:
@@ -71,7 +77,7 @@ class BaseVendor(ABC):
             logger.exception("Session %s failed", session_id)
             final_status = "failed"
 
-        self._db.update_status(session_id, final_status, datetime.now(UTC))
+        await self._store.update_status(session_id, final_status, ended_at=datetime.now(UTC))
         logger.info("Session %s -> %s", session_id, final_status)
         return session_id, final_status
 

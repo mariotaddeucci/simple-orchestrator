@@ -9,20 +9,19 @@ from claude_agent_sdk.types import (
     McpSSEServerConfig,
     McpStdioServerConfig,
 )
+from simple_orchestrator_core.models.mcp import McpConfig, McpHttpConfig, McpLocalConfig, McpSseConfig, McpStdioConfig
+from simple_orchestrator_core.models.model import ModelInfo
+from simple_orchestrator_core.models.skill import SkillConfig
 from ulid import ULID
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
-from simple_orchestrator_worker.models.mcp import McpConfig, McpHttpConfig, McpLocalConfig, McpSseConfig, McpStdioConfig
-from simple_orchestrator_worker.models.model import ModelInfo
 from simple_orchestrator_worker.vendors.base import BaseVendor
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from simple_orchestrator_worker.db.history import SessionHistoryDB
-    from simple_orchestrator_worker.models.agent import AgentConfig
-    from simple_orchestrator_worker.models.session import SessionConfig
-    from simple_orchestrator_worker.models.skill import SkillConfig
+    from simple_orchestrator_core.models.agent import AgentConfig
+    from simple_orchestrator_core.models.session import SessionConfig
 
 logger = get_vendor_logger(__name__)
 
@@ -37,8 +36,8 @@ _CLAUDE_MODELS = [
 
 
 class ClaudeCodeVendor(BaseVendor):
-    def __init__(self, db: SessionHistoryDB, cli_path: str | None = None) -> None:
-        super().__init__(db)
+    def __init__(self, session_store, cli_path: str | None = None) -> None:
+        super().__init__(session_store)
         self._cli_path = cli_path
 
     @property

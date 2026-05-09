@@ -1,6 +1,6 @@
 # simple-orchestrator-worker
 
-Worker runtime for the orchestrator: queue runner + REST API.
+Worker runtime for the orchestrator: polls the Web API and executes queued tasks.
 
 ## Run
 

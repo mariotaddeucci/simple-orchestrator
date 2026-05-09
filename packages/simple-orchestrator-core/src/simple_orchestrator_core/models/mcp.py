@@ -27,16 +27,7 @@ class McpHttpConfig(BaseModel):
 
 
 class McpLocalConfig(BaseModel):
-    """Local FastMCP app loaded via importlib and served over stdio.
-
-    The ``import_path`` must use the ``"module.path:attribute"`` notation,
-    e.g. ``"my_tools.server:mcp"``.  The attribute must be a
-    :class:`fastmcp.FastMCP` instance (or any object whose ``.run()`` method
-    accepts ``transport="stdio"``).
-
-    At runtime the config is converted to an equivalent :class:`McpStdioConfig`
-    that spawns ``sys.executable -c "..."`` and communicates over stdio.
-    """
+    """Local FastMCP app loaded via importlib and served over stdio."""
 
     type: Literal["local"] = "local"
     import_path: str  # "module.path:attribute"
@@ -51,7 +42,6 @@ class McpLocalConfig(BaseModel):
         return self
 
     def to_stdio(self) -> McpStdioConfig:
-        """Return an :class:`McpStdioConfig` that runs this FastMCP app via importlib."""
         module, attr = self.import_path.split(":")
         script = f"import importlib; getattr(importlib.import_module({module!r}), {attr!r}).run(transport='stdio')"
         return McpStdioConfig(command=sys.executable, args=["-c", script])
