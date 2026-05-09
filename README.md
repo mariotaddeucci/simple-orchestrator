@@ -1,58 +1,58 @@
 # simple-orchestrator
 
-> Orquestrador de agentes IA multi-vendor assíncrono, com fila de tarefas e agendamento persistidos em SQLite, gerenciados via REST API.
+> Async multi-vendor AI agent orchestrator with task queue and scheduling persisted in SQLite, managed via REST API.
 
 ---
 
-## O que é?
+## What is it?
 
-**simple-orchestrator** é um framework Python que coordena a execução de agentes de IA (Claude Code, OpenCode, GitHub Copilot) em background, com controle de concorrência e persistência em SQLite.
+**simple-orchestrator** is a Python framework that coordinates AI agent execution (Claude Code, OpenCode, GitHub Copilot) in the background, with concurrency control and SQLite persistence.
 
-Ideal para pipelines onde um agente "delegador" distribui trabalho para agentes especializados, ou para automatizar tarefas recorrentes (revisão de código, auditorias, relatórios) sem intervenção humana.
+Designed for pipelines where a "delegator" agent distributes work to specialized agents, or for automating recurring tasks (code review, audits, reports) without human intervention.
 
-**Orientado a banco de dados:** agentes, MCPs e eventos de agendamento são criados e gerenciados pela API REST (não por arquivos de configuração). O `orchestrator.toml` define apenas parâmetros de infraestrutura.
+**Database-centric:** agents, MCPs, and scheduled events are created and managed via the REST API — not config files. `orchestrator.toml` defines infrastructure parameters only.
 
-**Dois modos de execução:**
-- **Standalone** — `simple-orchestrator tui` inicia WebAPI e worker automaticamente como subprocessos. Tudo em um comando.
-- **Distribuído** — WebAPI, worker e TUI correm em processos separados (possivelmente em hosts diferentes).
+**Two execution modes:**
+- **Standalone** — `simple-orchestrator standalone` starts TUI with an embedded worker sharing one SQLite database directly — no HTTP, no subprocesses.
+- **Distributed** — WebAPI, worker, and TUI run as separate processes (optionally on different hosts), communicating via HTTP.
 
 ---
 
-## Funcionalidades principais
+## Features
 
-| Funcionalidade | Descrição |
+| Feature | Description |
 |---|---|
-| **Agentes via API** | Crie, atualize e delete agentes pelo REST (`POST /agents`). Sem configuração em TOML. |
-| **MCPs via API** | Registre servidores MCP (stdio/sse/http) globais ou por agente via `POST /mcps`. |
-| **Fila de tarefas** | Agentes enfileirados e processados com paralelismo configurável. Tarefas no mesmo `workdir` são serializadas automaticamente. |
-| **Eventos agendados** | Crie eventos com intervalo fixo (`interval_minutes`) ou expressão cron (`cron_expression`). O worker dispara automaticamente e calcula o próximo `next_run`. |
-| **Dependências entre tarefas** | Uma tarefa pode declarar `depends_on`; só inicia após todas as dependências completarem. |
-| **Dois modos de execução** | Standalone (um comando, subprocessos automáticos) ou distribuído (REST API + worker remoto). |
-| **Multi-vendor** | Suporta `claude_code`, `opencode` e `github_copilot` como backends. |
-| **TUI** | Interface terminal com tabs de Fila, Agentes e Eventos. Enfileirar tarefa por seleção de agente na lista. |
+| **Agents via API** | Create, update, and delete agents via REST (`POST /agents`). No TOML config needed. |
+| **MCPs via API** | Register MCP servers (stdio/sse/http) globally or per-agent via `POST /mcps`. |
+| **Task queue** | Agents queued and processed with configurable parallelism. Tasks sharing the same `workdir` are serialized automatically. |
+| **Scheduled events** | Create events with fixed interval (`interval_minutes`) or cron expression (`cron_expression`). Worker fires them automatically and computes next `next_run`. |
+| **Task dependencies** | A task can declare `depends_on`; it only starts after all dependencies complete. |
+| **Two execution modes** | Standalone (one command, automatic subprocesses) or distributed (REST API + remote worker). |
+| **Multi-vendor** | Supports `claude_code`, `opencode`, and `github_copilot` as backends. |
+| **TUI** | Terminal interface with Queue, Agents, and Events tabs. Queue a task by selecting an agent from the list. |
 
 ---
 
-## Instalação
+## Installation
 
 ```bash
-# Requer Python 3.14+
+# Requires Python 3.14+
 pip install simple-orchestrator
 
-# Desenvolvimento
+# Development
 git clone https://github.com/mariotaddeucci/simple-orchestrator
 cd simple-orchestrator
 uv sync --frozen
-uv run prek install   # instala git hooks
+uv run prek install   # install git hooks
 ```
 
 ---
 
-## Configuração
+## Configuration
 
-O `orchestrator.toml` define apenas infraestrutura. Agentes, MCPs e eventos são gerenciados pela API.
+`orchestrator.toml` defines infrastructure only. Agents, MCPs, and events are managed via the API.
 
-### `orchestrator.toml` (infraestrutura)
+### `orchestrator.toml` (infrastructure)
 
 ```toml
 db_path             = "orchestrator.db"
@@ -67,40 +67,42 @@ webapi_host  = "127.0.0.1"
 webapi_port  = 8765
 ```
 
-**Prioridade de configuração:** `orchestrator.toml` → env vars → `.env` → `pyproject.toml` → defaults.
+**Config precedence:** env vars → `ORCHESTRATOR_TOML_FILE` path → `orchestrator.toml` → `pyproject.toml [tool.orchestrator]` → defaults.
 
 ---
 
-## Uso
+## Usage
 
-### Modo standalone (recomendado para começar)
+### Standalone mode (recommended to start)
 
-Um único comando inicia a WebAPI, o worker e a TUI. Worker é subprocesso da TUI — encerra junto.
+One command starts the TUI with an embedded worker. Both share one SQLite database directly — no HTTP, no subprocesses.
 
 ```bash
-uv run simple-orchestrator tui
+uv run simple-orchestrator standalone
 ```
 
-### Modo distribuído
+### Distributed mode
+
+Each process runs independently and communicates via HTTP.
 
 ```bash
-# Servidor — WebAPI REST + banco centralizado
+# Server — REST WebAPI + centralized database
 uv run simple-orchestrator webapi
 
-# Worker remoto — conecta via API
-ORCHESTRATOR_API_URL=http://servidor:8765 uv run simple-orchestrator worker
+# Remote worker — connects to webapi via HTTP
+ORCHESTRATOR_API_URL=http://server:8765 uv run simple-orchestrator worker
 
-# TUI — conecta a WebAPI existente
-ORCHESTRATOR_API_URL=http://servidor:8765 uv run simple-orchestrator tui --distributed
+# TUI — connects to existing webapi via HTTP
+ORCHESTRATOR_API_URL=http://server:8765 uv run simple-orchestrator tui
 ```
 
 ---
 
-## Gerenciando recursos via API
+## Managing resources via API
 
-Todos os exemplos assumem `api_key = "change-me"` e `webapi_port = 8765`.
+All examples assume `api_key = "change-me"` and `webapi_port = 8765`.
 
-### Criar um agente
+### Create an agent
 
 ```bash
 curl -X POST http://localhost:8765/agents \
@@ -112,11 +114,11 @@ curl -X POST http://localhost:8765/agents \
     "vendor": "claude_code",
     "model": "claude-sonnet-4-6",
     "workdir": ".",
-    "prompt": "Você é um revisor de código. Analise as mudanças e reporte problemas."
+    "prompt": "You are a code reviewer. Analyze changes and report issues."
   }'
 ```
 
-### Registrar um MCP global
+### Register a global MCP
 
 ```bash
 curl -X POST http://localhost:8765/mcps \
@@ -132,7 +134,7 @@ curl -X POST http://localhost:8765/mcps \
   }'
 ```
 
-### Enfileirar uma tarefa
+### Queue a task
 
 ```bash
 curl -X POST http://localhost:8765/queue \
@@ -140,33 +142,33 @@ curl -X POST http://localhost:8765/queue \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "reviewer",
-    "prompt": "Revise o PR mais recente."
+    "prompt": "Review the latest PR."
   }'
 ```
 
-### Criar um evento agendado
+### Create a scheduled event
 
 ```bash
-# Intervalo fixo: a cada 30 minutos
+# Fixed interval: every 30 minutes
 curl -X POST http://localhost:8765/events \
   -H "X-API-Key: change-me" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "revisão periódica",
+    "name": "periodic review",
     "agent_id": "reviewer",
-    "prompt": "Revise mudanças recentes e reporte problemas.",
+    "prompt": "Review recent changes and report issues.",
     "schedule_type": "interval",
     "interval_minutes": 30
   }'
 
-# Cron: todo dia às 9h
+# Cron: every day at 9am
 curl -X POST http://localhost:8765/events \
   -H "X-API-Key: change-me" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "relatório diário",
+    "name": "daily report",
     "agent_id": "reviewer",
-    "prompt": "Gere o relatório diário.",
+    "prompt": "Generate the daily report.",
     "schedule_type": "cron",
     "cron_expression": "0 9 * * *"
   }'
@@ -174,19 +176,19 @@ curl -X POST http://localhost:8765/events \
 
 ---
 
-## Controle de concorrência
+## Concurrency control
 
 ```toml
 # orchestrator.toml
-max_active_sessions = 4   # máximo de sessões simultâneas (global)
+max_active_sessions = 4   # max simultaneous sessions (global)
 ```
 
-Tarefas para o mesmo `workdir` são serializadas automaticamente pelo worker.
-Timeout individual por agente é configurado no campo `task_timeout_minutes` ao criar o agente.
+Tasks targeting the same `workdir` are serialized automatically by the worker.
+Per-agent timeout is configured in the `task_timeout_minutes` field when creating the agent.
 
 ---
 
-## Implementando um vendor customizado
+## Implementing a custom vendor
 
 ```python
 from typing import Any, AsyncIterator
@@ -204,7 +206,7 @@ class MyVendor(BaseVendor):
         return [ModelInfo(id="my-model-v1", name="My Model v1", vendor="my_vendor")]
 
     async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]:
-        yield {"type": "text", "content": "Resposta do agente..."}
+        yield {"type": "text", "content": "Agent response..."}
 
     async def _run_session(self, session_id: str, config: SessionConfig) -> None:
         async for _ in self.execute_session(config):
@@ -216,17 +218,17 @@ class MyVendor(BaseVendor):
 
 ---
 
-## Referência de comandos
+## Command reference
 
 ```bash
-uv run simple-orchestrator tui               # standalone: inicia webapi + worker + TUI
-uv run simple-orchestrator tui --distributed # TUI apenas (conecta a webapi existente)
-uv run simple-orchestrator webapi            # WebAPI standalone
-uv run simple-orchestrator worker            # worker standalone
+uv run simple-orchestrator standalone  # TUI + embedded worker, direct SQLite (no HTTP)
+uv run simple-orchestrator tui         # TUI only — connects to existing webapi via HTTP
+uv run simple-orchestrator webapi      # WebAPI only — owns the SQLite DB
+uv run simple-orchestrator worker      # worker only — connects to webapi via HTTP
 ```
 
 ---
 
-## Contribuindo
+## Contributing
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) para arquitetura detalhada, diagramas e guia de desenvolvimento.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details, diagrams, and development guide.
