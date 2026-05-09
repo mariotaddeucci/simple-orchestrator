@@ -6,9 +6,13 @@ logs_dir            = "logs"
 log_level           = "INFO"          # DEBUG | INFO | WARNING | ERROR | CRITICAL
 max_active_sessions = 4
 
-# MCP server started alongside the orchestrator (uv run simple-orchestrator start).
+# Worker REST API (uv run simple-orchestrator worker).
+api_host = "127.0.0.1"
+api_port = 8765
+
+# Optional MCP server (not started by default).
 mcp_server_host = "127.0.0.1"
-mcp_server_port = 8765
+mcp_server_port = 8766
 
 # ── Global MCP servers (available to all agents) ─────────────────────────────
 
@@ -22,7 +26,7 @@ args    = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 # [agents.<id>.mcp_servers.orchestrator] for only the delegator agent.
 [mcp_servers.orchestrator]
 type = "sse"
-url  = "http://127.0.0.1:8765/sse"
+url  = "http://127.0.0.1:8766/sse"
 
 # [mcp_servers.github]
 # type = "sse"

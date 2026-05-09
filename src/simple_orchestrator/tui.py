@@ -1,1 +1,2 @@
-# Replaced by tui/ package. Python uses the package; this file is inert.
+# The TUI was split into a separate uv workspace package: `simple-orchestrator-tui`.
+# Run it with: `uv run simple-orchestrator-tui`

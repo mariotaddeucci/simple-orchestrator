@@ -26,6 +26,12 @@ class BaseVendor(ABC):
     @abstractmethod
     def vendor_name(self) -> str: ...
 
+    async def kill(self, session_id: str) -> None:
+        """Best-effort kill for an in-flight vendor session."""
+        with anyio.CancelScope(shield=True):
+            await self._vendor_kill(session_id)
+        self._db.update_status(session_id, "killed", datetime.now(UTC))
+
     async def run(self, config: SessionConfig, timeout_minutes: float = 30.0) -> tuple[str, str]:
         """Run a vendor session. Returns (session_id, final_status). Blocks until done.
 
@@ -51,9 +57,15 @@ class BaseVendor(ABC):
             with anyio.fail_after(timeout_minutes * 60):
                 await self._run_session(session_id, config)
             final_status = "completed"
+        except anyio.get_cancelled_exc_class():
+            logger.info("Session %s cancelled", session_id)
+            with anyio.CancelScope(shield=True):
+                await self._vendor_kill(session_id)
+            final_status = "killed"
         except TimeoutError:
             logger.warning("Session %s timed out after %.1f min", session_id, timeout_minutes)
-            await self._vendor_kill(session_id)
+            with anyio.CancelScope(shield=True):
+                await self._vendor_kill(session_id)
             final_status = "failed"
         except Exception:
             logger.exception("Session %s failed", session_id)
