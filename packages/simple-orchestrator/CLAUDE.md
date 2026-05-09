@@ -1,22 +1,39 @@
 # CLAUDE.md — `simple-orchestrator` (CLI / wiring)
 
-Escopo: `packages/simple-orchestrator/` (este guia é usado via `AGENTS.md` → symlink).
+Scope: `packages/simple-orchestrator/` (also exposed as `AGENTS.md` symlink).
 
-## Por que existe
+## Why it exists
 
-- Fornecer entrypoints/CLI para iniciar `worker` e `webapi`.
-- Centralizar o “wiring” (settings + DI) sem acoplar consumidores a implementações concretas.
+- Provide CLI entrypoints to start `worker` and `webapi`.
+- Centralize wiring (settings + DI) without coupling consumers to concrete implementations.
 
-## Objetivo principal
+## Main goal
 
-- Garantir que executar via CLI configure corretamente: settings, repositório (SQLite direto ou HTTP) e logging.
+Ensure CLI invocations correctly configure settings, the repository (SQLite direct or HTTP), and logging.
 
-## Como será desenvolvido
+## Key files
 
-- Manter subcomandos simples (parse/dispatch) e empurrar regras de negócio para os pacotes especializados.
-- Alterações aqui geralmente implicam documentação de CLI e validação end-to-end com comandos de execução.
+| File | What it contains |
+|---|---|
+| `src/simple_orchestrator/cli.py` | `main()` — subcommand dispatch |
 
-## Validação rápida
+## CLI subcommands
+
+| Command | What it does |
+|---|---|
+| `simple-orchestrator webapi` (or `start`) | Starts the FastAPI REST server (`webapi_cli.main()`) |
+| `simple-orchestrator worker` | Starts the queue runner (`worker_cli.main()`) |
+| `simple-orchestrator-tui` | Starts the Textual TUI (`tui.main()`) — separate entrypoint |
+
+Imports are lazy (`_import_or_exit(module, extra)`) so missing optional deps produce a clear error instead of a hard crash at startup.
+
+## Development rules
+
+- Keep subcommand handlers minimal: parse args, load settings, call the package's entry function.
+- Business logic belongs in the specialized packages, not here.
+- CLI changes usually require documentation updates and end-to-end validation with the run commands.
+
+## Quick validation
 
 ```bash
 uv run ruff check packages/simple-orchestrator/

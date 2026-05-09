@@ -1,21 +1,43 @@
 # CLAUDE.md — `simple-orchestrator-tui` (Textual UI)
 
-Escopo: `packages/simple-orchestrator-tui/`.
+Scope: `packages/simple-orchestrator-tui/`.
 
-## Por que existe
+## Why it exists
 
-- Interface terminal para enfileirar/monitorar sessões.
-- Consumir o repositório (SQLite direto ou HTTP via `api-client`) sem acoplamento a implementações.
+- Terminal interface to enqueue and monitor sessions.
+- Consume the repository (SQLite direct or HTTP via `api-client`) without coupling to implementations.
 
-## Objetivo principal
+## Main goal
 
-- UX previsível e estável; manter a TUI como cliente (sem regras de persistência aqui).
+Predictable, stable UX; keep the TUI as a pure client (no persistence logic here).
 
-## Como será desenvolvido
+## Key files
 
-- Evitar dependência direta em `database`/SQL; usar o repositório injetado.
-- Mudanças de fluxo devem ser validadas rodando a TUI contra o modo escolhido.
+| File | What it contains |
+|---|---|
+| `src/simple_orchestrator_tui/app.py` | `OrchestratorTUI` (main Textual app) + `EnqueueModal` |
 
-## Validação rápida
+## UI components
 
-Este pacote tende a ser validado via execução manual da TUI; quando houver testes, preferir rodá-los por pacote.
+**`OrchestratorTUI`** — main app:
+- `DataTable` showing the queue (live refresh).
+- Key bindings: `q` quit, `r` refresh, `a` enqueue.
+- Uses `OrchestratorApiClient` (HTTP) to fetch and update queue items.
+
+**`EnqueueModal`** — modal dialog:
+- Inputs: `agent_id`, `prompt`, `workdir`.
+- Submits via `api-client` `enqueue()`.
+
+## Development rules
+
+- No direct dependency on `database`/SQL — always go through the injected repository.
+- Flow changes must be validated by running the TUI against the chosen mode (direct DB or HTTP).
+- UI state (selected row, filters) is ephemeral — never persist it.
+
+## Quick validation
+
+This package is validated manually by running the TUI. When unit tests exist, run them per-package:
+
+```bash
+uv run --package simple-orchestrator-tui pytest packages/simple-orchestrator-tui/
+```

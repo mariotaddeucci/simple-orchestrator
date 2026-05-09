@@ -1,25 +1,50 @@
-# CLAUDE.md — `simple-orchestrator-database` (SQLite / repositório)
+# CLAUDE.md — `simple-orchestrator-database` (SQLite / repository)
 
-Escopo: `packages/simple-orchestrator-database/`.
+Scope: `packages/simple-orchestrator-database/`.
 
-## Por que existe
+## Why it exists
 
-- Implementar `IOrchestratorRepository` com SQLite (SQLModel/SQLAlchemy sync).
-- Ser o backend único para o modo standalone e para a `webapi` no modo distribuído.
+- Implement `IOrchestratorRepository` using SQLite (SQLModel / SQLAlchemy sync).
+- Serve as the sole persistence backend for standalone mode and for `webapi` in distributed mode.
 
-## Objetivo principal
+## Main goal
 
-- Persistência correta: atomicidade (claim/dequeue), consistência de status e retenção/cleanup.
+Correct persistence: atomicity (claim/dequeue), consistent status transitions, and retention/cleanup.
 
-## Como será desenvolvido
+## Key files
 
-- Evitar lógica de HTTP aqui (isso é papel de `webapi` / `api-client`).
-- Mudanças em schema/queries devem acompanhar atualizações em `core` (modelos/validators).
-- Manter comportamento estável para dependências (`depends_on`) e cleanup de itens antigos.
+| File | What it contains |
+|---|---|
+| `src/simple_orchestrator_database/engine.py` | `build_engine(db_path)` — creates SQLite engine and all tables |
+| `src/simple_orchestrator_database/repository.py` | `OrchestratorDB` — full implementation of `IOrchestratorRepository` |
 
-## Validação rápida
+## Database schema (auto-created by SQLModel)
 
-Este pacote normalmente é validado indiretamente pelos testes da `webapi` e do `worker`:
+| Table | Primary key | Notable columns |
+|---|---|---|
+| `agents` | `id` (ULID) | `name`, `nickname`, `vendor`, `model`, `workdir`, `task_timeout_minutes`, `mcp_servers` (JSON), `skills` (JSON), `skill_globs` (JSON) |
+| `queue` | `id` (ULID) | `agent_id`, `status`, `session_id`, `depends_on` (JSON), `note`, `created_at`, `started_at`, `ended_at` |
+| `sessions` | `id` (ULID) | `vendor`, `status`, `vendor_session_id`, timestamps |
+| `memory` | `id` (ULID) | `agent_id`, `description`, `content`, `updated_at` |
+| `worker_heartbeats` | `id` (ULID) | `type`, `name`, `last_heartbeat_at` |
+
+## Key behaviors
+
+- **`dequeue_next()`** — atomically claims the next `pending` item; checks `depends_on` items are all complete before yielding.
+- **`enqueue()`** — resolves `workdir`: uses a temp dir if none given, or git root if path is inside a repo.
+- **`cleanup_old_completed_items()`** — keeps at most `max_items` (default 15) recent completed items, removing those older than `max_age_days` (default 7).
+- **`upsert_worker_heartbeat()`** — inserts or updates `last_heartbeat_at` for the given worker ULID.
+- **`list_alive_workers(ttl_seconds)`** — returns heartbeat records where `last_heartbeat_at >= now - ttl`.
+
+## Development rules
+
+- No HTTP logic here — that belongs to `webapi` / `api-client`.
+- Schema/query changes must align with `core` model updates.
+- Keep `depends_on` checking and `dequeue_next()` atomic to avoid double-dispatch under concurrent workers.
+
+## Quick validation
+
+This package is validated indirectly through `webapi` and `worker` tests:
 
 ```bash
 uv run --package simple-orchestrator-webapi pytest packages/simple-orchestrator-webapi/
