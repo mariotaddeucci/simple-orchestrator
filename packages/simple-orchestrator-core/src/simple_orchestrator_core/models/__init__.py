@@ -1,6 +1,6 @@
 from .agent import AgentConfig
 from .agent_record import AgentRecord
-from .mcp import McpConfig, McpHttpConfig, McpLocalConfig, McpSseConfig, McpStdioConfig
+from .mcp import McpConfig, McpHttpConfig, McpSseConfig, McpStdioConfig
 from .memory_record import MemoryRecord
 from .model import ModelInfo
 from .queue_item import QueueItem
@@ -12,7 +12,6 @@ __all__ = [
     "AgentRecord",
     "McpConfig",
     "McpHttpConfig",
-    "McpLocalConfig",
     "McpSseConfig",
     "McpStdioConfig",
     "MemoryRecord",
