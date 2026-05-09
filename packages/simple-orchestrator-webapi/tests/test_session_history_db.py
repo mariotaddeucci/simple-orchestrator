@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from simple_orchestrator_core.api import SessionUpdateRequest
 from simple_orchestrator_core.models.session import SessionRecord
-from simple_orchestrator_webapi.db.orchestrator import OrchestratorDB
+from simple_orchestrator_database import OrchestratorDB
 
 
 def _make_record(

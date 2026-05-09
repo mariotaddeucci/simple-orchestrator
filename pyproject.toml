@@ -11,6 +11,7 @@ dependencies = [
     "simple-orchestrator",
     "simple-orchestrator-api-client",
     "simple-orchestrator-core",
+    "simple-orchestrator-database",
     "simple-orchestrator-webapi",
     "simple-orchestrator-worker",
     "simple-orchestrator-tui",
@@ -18,10 +19,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "anyio[trio]>=4.7.0",
     "prek>=0.3.11",
     "pyrefly>=0.63.1",
-    "pytest>=9.0.3",
     "ruff>=0.15.12",
 ]
 
@@ -82,7 +81,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S", "PLR", "FBT", "DTZ", "ASYNC240", "PLC0415", "TC"]
+"**/tests/**/*.py" = ["S", "PLR", "FBT", "DTZ", "ASYNC240", "PLC0415", "TC"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 7
@@ -92,18 +91,12 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-[tool.pytest.ini_options]
-testpaths = ["tests", "packages"]
-addopts = "-m 'not integration'"
-markers = [
-    "integration: tests that require live external services (copilot, claude, opencode)",
-]
-
 [tool.pyrefly]
 disable-project-excludes-heuristics = true
 project_includes = [
     "packages/simple-orchestrator-core/src/simple_orchestrator_core",
     "packages/simple-orchestrator-api-client/src/simple_orchestrator_api_client",
+    "packages/simple-orchestrator-database/src/simple_orchestrator_database",
     "packages/simple-orchestrator-webapi/src/simple_orchestrator_webapi",
     "packages/simple-orchestrator-worker/src/simple_orchestrator_worker",
     "packages/simple-orchestrator-tui/src/simple_orchestrator_tui",
@@ -113,6 +106,7 @@ project_includes = [
 members = [
     "packages/simple-orchestrator-core",
     "packages/simple-orchestrator-api-client",
+    "packages/simple-orchestrator-database",
     "packages/simple-orchestrator-webapi",
     "packages/simple-orchestrator",
     "packages/simple-orchestrator-tui",
@@ -123,6 +117,7 @@ members = [
 simple-orchestrator = { workspace = true }
 simple-orchestrator-core = { workspace = true }
 simple-orchestrator-api-client = { workspace = true }
+simple-orchestrator-database = { workspace = true }
 simple-orchestrator-webapi = { workspace = true }
 simple-orchestrator-tui = { workspace = true }
 simple-orchestrator-worker = { workspace = true }

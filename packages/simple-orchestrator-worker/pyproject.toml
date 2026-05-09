@@ -16,6 +16,20 @@ dependencies = [
     "simple-orchestrator-core",
 ]
 
+[dependency-groups]
+dev = [
+    "anyio[trio]>=4.7.0",
+    "pytest>=9.0.3",
+    "simple-orchestrator-webapi",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that require live external services (copilot, claude, opencode)",
+]
+
 [project.scripts]
 simple-orchestrator-worker = "simple_orchestrator_worker.worker_cli:main"
 

@@ -176,3 +176,4 @@ __marimo__/
 logs/
 *.db
 orchestrator.toml
+.claude/settings.local.json

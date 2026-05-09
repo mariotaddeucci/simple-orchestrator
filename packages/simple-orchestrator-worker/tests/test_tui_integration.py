@@ -7,6 +7,7 @@ talks to the Web API over HTTP. In tests we use an in-process adapter that calls
 from __future__ import annotations
 
 import pytest
+from mock_agent import MockAgent
 from simple_orchestrator_core.api import (
     AgentUpsertRequest,
     QueueDequeueResponse,
@@ -19,8 +20,6 @@ from simple_orchestrator_webapi.db.orchestrator import OrchestratorDB
 from simple_orchestrator_webapi.session_config_builder import build_session_config
 from simple_orchestrator_worker.session_store import ApiSessionStore
 from simple_orchestrator_worker.worker_runner import WorkerRunner
-
-from tests.test_mock_agent import MockAgent
 
 
 @pytest.fixture

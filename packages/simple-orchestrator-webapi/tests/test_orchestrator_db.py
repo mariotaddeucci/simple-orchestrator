@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from simple_orchestrator_core.models.session import SessionRecord
-from simple_orchestrator_webapi.db.orchestrator import OrchestratorDB
+from simple_orchestrator_database import OrchestratorDB
 
 
 @pytest.fixture
