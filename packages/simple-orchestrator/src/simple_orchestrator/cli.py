@@ -8,18 +8,18 @@ from types import ModuleType
 def main() -> None:
     parser = argparse.ArgumentParser(prog="simple-orchestrator")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("worker", help="Start the worker (queue runner + REST API)")
-    subparsers.add_parser("start", help="Alias for 'worker'")
+    subparsers.add_parser("webapi", help="Start the Web API (DB mediator)")
+    subparsers.add_parser("worker", help="Start the worker (polls the Web API)")
+    subparsers.add_parser("start", help="Alias for 'webapi'")
     subparsers.add_parser("tui", help="Start the TUI (REST API client)")
-    subparsers.add_parser("mcp-server", help="Start MCP server on stdio only (used when spawned as MCP subprocess)")
 
     args = parser.parse_args()
 
-    if args.command == "mcp-server":
-        _run_mcp_server()
+    if args.command in (None, "webapi", "start"):
+        _run_webapi()
         return
 
-    if args.command in (None, "worker", "start"):
+    if args.command == "worker":
         _run_worker()
         return
 
@@ -49,9 +49,9 @@ def _run_worker() -> None:
     worker_cli.main()
 
 
-def _run_mcp_server() -> None:
-    mcp_server = _import_or_exit("simple_orchestrator_worker.mcp_server", extra="worker")
-    mcp_server.serve()
+def _run_webapi() -> None:
+    webapi_cli = _import_or_exit("simple_orchestrator_webapi.webapi_cli", extra="webapi")
+    webapi_cli.main()
 
 
 def _run_tui() -> None:

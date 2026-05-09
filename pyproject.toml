@@ -9,7 +9,11 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "simple-orchestrator",
+    "simple-orchestrator-api-client",
+    "simple-orchestrator-core",
+    "simple-orchestrator-webapi",
     "simple-orchestrator-worker",
+    "simple-orchestrator-tui",
 ]
 
 [dependency-groups]
@@ -96,12 +100,20 @@ markers = [
 ]
 
 [tool.pyrefly]
+disable-project-excludes-heuristics = true
 project_includes = [
+    "packages/simple-orchestrator-core/src/simple_orchestrator_core",
+    "packages/simple-orchestrator-api-client/src/simple_orchestrator_api_client",
+    "packages/simple-orchestrator-webapi/src/simple_orchestrator_webapi",
     "packages/simple-orchestrator-worker/src/simple_orchestrator_worker",
+    "packages/simple-orchestrator-tui/src/simple_orchestrator_tui",
 ]
 
 [tool.uv.workspace]
 members = [
+    "packages/simple-orchestrator-core",
+    "packages/simple-orchestrator-api-client",
+    "packages/simple-orchestrator-webapi",
     "packages/simple-orchestrator",
     "packages/simple-orchestrator-tui",
     "packages/simple-orchestrator-worker",
@@ -109,5 +121,8 @@ members = [
 
 [tool.uv.sources]
 simple-orchestrator = { workspace = true }
+simple-orchestrator-core = { workspace = true }
+simple-orchestrator-api-client = { workspace = true }
+simple-orchestrator-webapi = { workspace = true }
 simple-orchestrator-tui = { workspace = true }
 simple-orchestrator-worker = { workspace = true }

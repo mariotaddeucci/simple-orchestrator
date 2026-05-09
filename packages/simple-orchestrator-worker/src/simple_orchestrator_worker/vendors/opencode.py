@@ -2,16 +2,15 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 
 from opencode_ai import AsyncOpencode
+from simple_orchestrator_core.models.model import ModelInfo
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
-from simple_orchestrator_worker.models.model import ModelInfo
 from simple_orchestrator_worker.vendors.base import BaseVendor
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from simple_orchestrator_worker.db.history import SessionHistoryDB
-    from simple_orchestrator_worker.models.session import SessionConfig
+    from simple_orchestrator_core.models.session import SessionConfig
 
 logger = get_vendor_logger(__name__)
 
@@ -19,12 +18,12 @@ logger = get_vendor_logger(__name__)
 class OpenCodeVendor(BaseVendor):
     def __init__(
         self,
-        db: SessionHistoryDB,
+        session_store,
         base_url: str | None = None,
         provider_id: str = "anthropic",
         model_id: str = "claude-sonnet-4-5",
     ) -> None:
-        super().__init__(db)
+        super().__init__(session_store)
         self._base_url = base_url
         self._provider_id = provider_id
         self._model_id = model_id
@@ -75,7 +74,7 @@ class OpenCodeVendor(BaseVendor):
         async with AsyncOpencode(base_url=self._base_url) as client:
             vendor_session = await client.session.create()
             logger.debug("OpenCode vendor session created vendor_session_id=%s", vendor_session.id)
-            self._db.update_status(session_id, "running", vendor_session_id=vendor_session.id)
+            await self._store.update_status(session_id, "running", vendor_session_id=vendor_session.id)
             self._active_handles[session_id] = (client, vendor_session.id)
 
             model_id = config.model or self._model_id

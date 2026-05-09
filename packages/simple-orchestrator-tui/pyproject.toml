@@ -5,7 +5,8 @@ description = "TUI client for simple-orchestrator worker API"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "httpx>=0.28.1",
+    "simple-orchestrator-api-client",
+    "simple-orchestrator-core",
     "textual>=3.0.0",
 ]
 

@@ -3,18 +3,16 @@ from typing import TYPE_CHECKING, Any
 
 from copilot.client import CopilotClient
 from copilot.session import CopilotSession, PermissionRequestResult
+from simple_orchestrator_core.models.model import ModelInfo
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
-from simple_orchestrator_worker.models.model import ModelInfo
 from simple_orchestrator_worker.vendors.base import BaseVendor
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from copilot.generated.session_events import PermissionRequest
-
-    from simple_orchestrator_worker.db.history import SessionHistoryDB
-    from simple_orchestrator_worker.models.session import SessionConfig
+    from simple_orchestrator_core.models.session import SessionConfig
 
 logger = get_vendor_logger(__name__)
 
@@ -26,10 +24,10 @@ def _auto_approve(_request: PermissionRequest, _env: dict[str, str]) -> Permissi
 class GithubCopilotVendor(BaseVendor):
     def __init__(
         self,
-        db: SessionHistoryDB,
+        session_store,
         model: str = "gpt-4o",
     ) -> None:
-        super().__init__(db)
+        super().__init__(session_store)
         self._model = model
         self._active_handles: dict[str, CopilotSession] = {}
 
@@ -78,7 +76,7 @@ class GithubCopilotVendor(BaseVendor):
             )
             async with copilot_session:
                 logger.debug("GitHub Copilot vendor session created vendor_session_id=%s", copilot_session.session_id)
-                self._db.update_status(
+                await self._store.update_status(
                     session_id,
                     "running",
                     vendor_session_id=copilot_session.session_id,

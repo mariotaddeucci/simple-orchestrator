@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, ClassVar
 
+from simple_orchestrator_api_client import OrchestratorApiClient
+from simple_orchestrator_core.api import EnqueueRequest
+from simple_orchestrator_core.settings import TuiSettings
 from textual import on, work
 from textual.app import App, ComposeResult
+from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, TextArea
-
-from simple_orchestrator_tui.client import OrchestratorApiClient
 
 
 @dataclass(frozen=True)
@@ -63,15 +64,15 @@ class EnqueueModal(ModalScreen[_EnqueueResult | None]):
 class OrchestratorTUI(App[None]):
     TITLE = "Simple Orchestrator — TUI (API client)"
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
         ("a", "enqueue", "Enqueue"),
     ]
 
-    def __init__(self, api_url: str) -> None:
+    def __init__(self, api_url: str, *, api_key: str) -> None:
         super().__init__()
-        self._client = OrchestratorApiClient(api_url)
+        self._client = OrchestratorApiClient(api_url, api_key=api_key)
         self._api_url = api_url
 
     def compose(self) -> ComposeResult:
@@ -116,17 +117,19 @@ class OrchestratorTUI(App[None]):
         table.clear()
         for it in items:
             table.add_row(
-                it.get("id", ""),
-                it.get("agent_id", ""),
-                it.get("status", ""),
-                _fmt_dt(it.get("created_at")),
-                _fmt_dt(it.get("started_at")),
-                _fmt_dt(it.get("ended_at")),
+                it.id,
+                it.agent_id,
+                it.status,
+                _fmt_dt(it.created_at),
+                _fmt_dt(it.started_at),
+                _fmt_dt(it.ended_at),
             )
 
     async def _enqueue_async(self, result: _EnqueueResult) -> None:
         # TODO: allow selecting agent_id from /agents + validate locally before sending.
-        await self._client.enqueue(agent_id=result.agent_id, prompt=result.prompt, workdir=result.workdir)
+        await self._client.enqueue(
+            EnqueueRequest(agent_id=result.agent_id, prompt=result.prompt, workdir=result.workdir),
+        )
         self.action_refresh()
 
 
@@ -142,5 +145,5 @@ def _fmt_dt(raw: Any) -> str:
 
 
 def main() -> None:
-    api_url = os.environ.get("ORCHESTRATOR_API_URL", "http://127.0.0.1:8765")
-    OrchestratorTUI(api_url=api_url).run()
+    settings = TuiSettings()
+    OrchestratorTUI(api_url=settings.api_url, api_key=settings.api_key).run()

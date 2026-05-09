@@ -11,11 +11,11 @@ Prerequisites:
 
 import asyncio
 import contextlib
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-from simple_orchestrator_worker.db.history import SessionHistoryDB
-from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_core.models.session import SessionConfig, SessionRecord
 from simple_orchestrator_worker.vendors.claude_code import ClaudeCodeVendor
 from simple_orchestrator_worker.vendors.github_copilot import GithubCopilotVendor
 from simple_orchestrator_worker.vendors.opencode import OpenCodeVendor
@@ -129,11 +129,32 @@ _OPENCODE_REACHABLE = _opencode_reachable()
 
 
 @pytest.fixture
-async def history_db(tmp_path):
-    db = SessionHistoryDB(tmp_path / "sessions.db")
-    await db.connect()
-    yield db
-    await db.close()
+def session_store():
+    class _Store:
+        def __init__(self) -> None:
+            self.records: dict[str, SessionRecord] = {}
+
+        async def save(self, record: SessionRecord) -> None:
+            self.records[record.id] = record
+
+        async def update_status(
+            self,
+            session_id: str,
+            status: str,
+            *,
+            ended_at: datetime | None = None,
+            vendor_session_id: str | None = None,
+        ) -> None:
+            rec = self.records.get(session_id)
+            if rec is None:
+                return
+            rec.status = status
+            if ended_at is not None:
+                rec.ended_at = ended_at
+            if vendor_session_id is not None:
+                rec.vendor_session_id = vendor_session_id
+
+    return _Store()
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +174,7 @@ async def test_copilot_gpt41_model_available():
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot not available or not authenticated")
-async def test_copilot_execute_session_returns_session_id_and_response(history_db):
+async def test_copilot_execute_session_returns_session_id_and_response(session_store):
     """
     execute_session() with gpt-4.1 must yield a session_created event with a
     non-empty session_id, and at least one assistant.message event containing
@@ -161,7 +182,7 @@ async def test_copilot_execute_session_returns_session_id_and_response(history_d
     """
     from copilot.generated.session_events import AssistantMessageData, SessionEventType
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4.1")
     config = SessionConfig(prompt=_SIMPLE_PROMPT, model="gpt-4.1")
 
     stream = await vendor.execute_session(config)
@@ -193,13 +214,13 @@ async def test_copilot_execute_session_returns_session_id_and_response(history_d
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _COPILOT_AVAILABLE, reason="copilot not available or not authenticated")
-async def test_copilot_run_and_wait_completes_with_gpt41(history_db):
+async def test_copilot_run_and_wait_completes_with_gpt41(session_store):
     """
     Full run() → wait() flow with gpt-4.1 must complete:
       - run() returns a ULID session_id
       - wait() returns a record with status='completed' and vendor='github_copilot'
     """
-    vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4.1")
     config = SessionConfig(prompt=_SIMPLE_PROMPT, model="gpt-4.1")
 
     session_id = await vendor.run(config)
@@ -220,14 +241,14 @@ async def test_copilot_run_and_wait_completes_with_gpt41(history_db):
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _CLAUDE_AVAILABLE, reason="claude not available or not authenticated")
-async def test_claude_code_execute_session_returns_response(history_db):
+async def test_claude_code_execute_session_returns_response(session_store):
     """
     execute_session() must yield AssistantMessage events with text content
     that answers '2+2 = 4'.
     """
     from claude_agent_sdk import AssistantMessage, TextBlock
 
-    vendor = ClaudeCodeVendor(history_db)
+    vendor = ClaudeCodeVendor(session_store)
     config = SessionConfig(prompt=_SIMPLE_PROMPT, max_turns=1)
 
     stream = await vendor.execute_session(config)
@@ -250,9 +271,9 @@ async def test_claude_code_execute_session_returns_response(history_db):
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _CLAUDE_AVAILABLE, reason="claude not available or not authenticated")
-async def test_claude_code_run_and_wait_completes(history_db):
+async def test_claude_code_run_and_wait_completes(session_store):
     """run() → wait() must return a ULID session_id and a completed record."""
-    vendor = ClaudeCodeVendor(history_db)
+    vendor = ClaudeCodeVendor(session_store)
     config = SessionConfig(prompt=_SIMPLE_PROMPT, max_turns=1)
 
     session_id = await vendor.run(config)
@@ -272,7 +293,7 @@ async def test_claude_code_run_and_wait_completes(history_db):
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _OPENCODE_REACHABLE, reason="OpenCode server not reachable")
-async def test_opencode_execute_session_returns_session_id_and_response(history_db):
+async def test_opencode_execute_session_returns_session_id_and_response(session_store):
     """
     execute_session() must yield session_created event with a non-empty session_id
     and a response event. Text content is verified via session.messages().
@@ -282,7 +303,7 @@ async def test_opencode_execute_session_returns_session_id_and_response(history_
     from opencode_ai.types import TextPart
     from opencode_ai.types.session_messages_response import SessionMessagesResponseItem
 
-    vendor = OpenCodeVendor(history_db)
+    vendor = OpenCodeVendor(session_store)
     config = SessionConfig(prompt=_SIMPLE_PROMPT)
 
     stream = await vendor.execute_session(config)
@@ -319,9 +340,9 @@ async def test_opencode_execute_session_returns_session_id_and_response(history_
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _OPENCODE_REACHABLE, reason="OpenCode server not reachable")
-async def test_opencode_run_and_wait_completes(history_db):
+async def test_opencode_run_and_wait_completes(session_store):
     """run() → wait() must return a ULID session_id and a completed record."""
-    vendor = OpenCodeVendor(history_db)
+    vendor = OpenCodeVendor(session_store)
     config = SessionConfig(prompt=_SIMPLE_PROMPT)
 
     session_id = await vendor.run(config)

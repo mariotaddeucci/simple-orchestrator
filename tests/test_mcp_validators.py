@@ -6,8 +6,8 @@ path traversal, and whitelist constraints.
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
-from simple_orchestrator_worker.mcp_server import _TaskSpec
-from simple_orchestrator_worker.validators import (
+from simple_orchestrator_core.mcp_inputs import TaskSpec as _TaskSpec
+from simple_orchestrator_core.validators import (
     MAX_DESCRIPTION_LENGTH,
     MAX_MEMORY_CONTENT_LENGTH,
     MAX_PROMPT_LENGTH,

@@ -5,9 +5,8 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from simple_orchestrator_worker.db.history import SessionHistoryDB
-from simple_orchestrator_worker.models.model import ModelInfo
-from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_core.models.model import ModelInfo
+from simple_orchestrator_core.models.session import SessionConfig
 from simple_orchestrator_worker.vendors.base import BaseVendor
 
 logger = logging.getLogger(__name__)
@@ -24,12 +23,12 @@ class MockAgent(BaseVendor):
 
     def __init__(
         self,
-        db: SessionHistoryDB,
+        session_store,
         *,
         should_fail: bool = False,
         delay_seconds: float = 0.0,
     ) -> None:
-        super().__init__(db)
+        super().__init__(session_store)
         self._should_fail = should_fail
         self._delay_seconds = delay_seconds
         self.executed_sessions: list[tuple[str, str]] = []  # (session_id, prompt)

@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Annotated, Literal
+
+from pydantic import Field
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    PyprojectTomlConfigSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
+
+from .models.mcp import McpConfig
+from .models.skill import SkillConfig
+
+_TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
+
+
+class _OrchestratorSettingsBase(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="ORCHESTRATOR_",
+        env_file=".env",
+        env_nested_delimiter="__",
+        env_ignore_empty=True,
+        extra="ignore",
+        pyproject_toml_table_header=("tool", "simple-orchestrator"),
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        sources: list[PydanticBaseSettingsSource] = [
+            init_settings,
+            env_settings,
+            dotenv_settings,
+        ]
+
+        toml_path = Path(os.environ.get(_TOML_FILE_ENV, "orchestrator.toml"))
+        if toml_path.exists():
+            sources.append(TomlConfigSettingsSource(settings_cls, toml_file=toml_path))
+
+        pyproject_path = Path("pyproject.toml")
+        if pyproject_path.exists():
+            sources.append(PyprojectTomlConfigSettingsSource(settings_cls, toml_file=pyproject_path))
+
+        return tuple(sources)
+
+
+class WebApiSettings(_OrchestratorSettingsBase):
+    db_path: str = "orchestrator.db"
+    logs_dir: Path = Path("logs")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    webapi_host: str = "127.0.0.1"
+    webapi_port: int = 8765
+    api_key: str = "change-me"
+
+    task_timeout_minutes: float = Field(default=30.0, gt=0)
+    max_completed_items: int = Field(default=15, ge=1)
+    max_completed_age_days: int = Field(default=7, ge=1)
+
+    mcp_servers: dict[
+        str,
+        Annotated[McpConfig, Field(discriminator="type")],
+    ] = Field(default_factory=dict)
+    skills: list[str | SkillConfig] = Field(default_factory=list)
+
+
+class WorkerSettings(_OrchestratorSettingsBase):
+    logs_dir: Path = Path("logs")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    api_url: str = "http://127.0.0.1:8765"
+    api_key: str = "change-me"
+
+    max_active_sessions: int = Field(default=4, ge=1)
+    poll_interval_seconds: float = Field(default=1.0, gt=0)
+    default_task_timeout_minutes: float = Field(default=30.0, gt=0)
+
+
+class TuiSettings(_OrchestratorSettingsBase):
+    logs_dir: Path = Path("logs")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    api_url: str = "http://127.0.0.1:8765"
+    api_key: str = "change-me"

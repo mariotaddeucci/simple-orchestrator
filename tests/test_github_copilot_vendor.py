@@ -1,12 +1,12 @@
 """Tests for GithubCopilotVendor — model passthrough and full session flow."""
 
 import asyncio
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from simple_orchestrator_worker.db.history import SessionHistoryDB
-from simple_orchestrator_worker.models.model import ModelInfo
-from simple_orchestrator_worker.models.session import SessionConfig
+from simple_orchestrator_core.models.model import ModelInfo
+from simple_orchestrator_core.models.session import SessionConfig, SessionRecord
 from simple_orchestrator_worker.vendors.github_copilot import GithubCopilotVendor
 
 # ---------------------------------------------------------------------------
@@ -15,11 +15,32 @@ from simple_orchestrator_worker.vendors.github_copilot import GithubCopilotVendo
 
 
 @pytest.fixture
-def history_db(tmp_path):
-    db = SessionHistoryDB(tmp_path / "sessions.db")
-    db.connect()
-    yield db
-    db.close()
+def session_store():
+    class _Store:
+        def __init__(self) -> None:
+            self.records: dict[str, SessionRecord] = {}
+
+        async def save(self, record: SessionRecord) -> None:
+            self.records[record.id] = record
+
+        async def update_status(
+            self,
+            session_id: str,
+            status: str,
+            *,
+            ended_at: datetime | None = None,
+            vendor_session_id: str | None = None,
+        ) -> None:
+            rec = self.records.get(session_id)
+            if rec is None:
+                return
+            rec.status = status
+            if ended_at is not None:
+                rec.ended_at = ended_at
+            if vendor_session_id is not None:
+                rec.vendor_session_id = vendor_session_id
+
+    return _Store()
 
 
 def _make_copilot_session(session_id: str = "copilot-session-abc") -> MagicMock:
@@ -57,15 +78,12 @@ def _make_copilot_client(session: MagicMock, models: list | None = None) -> Magi
 # ---------------------------------------------------------------------------
 
 
-def test_default_model(history_db):
-    vendor = GithubCopilotVendor.__new__(GithubCopilotVendor)
-    vendor.__init__ = GithubCopilotVendor.__init__
-    # Default should be "gpt-4o"
+def test_default_model(session_store):
     vendor = GithubCopilotVendor(MagicMock(), model="gpt-4o")
     assert vendor._model == "gpt-4o"
 
 
-def test_custom_model(history_db):
+def test_custom_model(session_store):
     vendor = GithubCopilotVendor(MagicMock(), model="gpt-4.1")
     assert vendor._model == "gpt-4.1"
 
@@ -75,14 +93,14 @@ def test_custom_model(history_db):
 # ---------------------------------------------------------------------------
 
 
-def test_list_models_returns_github_copilot_vendor(history_db):
+def test_list_models_returns_github_copilot_vendor(session_store):
     session = _make_copilot_session()
     raw_model = MagicMock()
     raw_model.id = "gpt-4.1"
     raw_model.name = "GPT-4.1"
     client = _make_copilot_client(session, models=[raw_model])
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4.1")
 
     with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
         models = asyncio.run(vendor.list_models())
@@ -96,12 +114,12 @@ def test_list_models_returns_github_copilot_vendor(history_db):
 # ---------------------------------------------------------------------------
 
 
-def test_execute_session_passes_gpt41_model(history_db):
+def test_execute_session_passes_gpt41_model(session_store):
     """SessionConfig.model='gpt-4.1' must reach create_session(model=...)."""
     copilot_session = _make_copilot_session()
     client = _make_copilot_client(copilot_session)
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4o")  # default is 4o
+    vendor = GithubCopilotVendor(session_store, model="gpt-4o")  # default is 4o
     config = SessionConfig(prompt="hello", model="gpt-4.1")
 
     async def run():
@@ -120,12 +138,12 @@ def test_execute_session_passes_gpt41_model(history_db):
     assert events[0]["session_id"] == copilot_session.session_id
 
 
-def test_execute_session_falls_back_to_instance_model(history_db):
+def test_execute_session_falls_back_to_instance_model(session_store):
     """When SessionConfig.model is None, instance default model is used."""
     copilot_session = _make_copilot_session()
     client = _make_copilot_client(copilot_session)
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4.1")
     config = SessionConfig(prompt="hello", model=None)
 
     async def run():
@@ -140,12 +158,12 @@ def test_execute_session_falls_back_to_instance_model(history_db):
     assert kwargs["model"] == "gpt-4.1"
 
 
-def test_run_session_passes_gpt41_model(history_db):
+def test_run_session_passes_gpt41_model(session_store):
     """_run_session (background path) also passes model='gpt-4.1' to create_session."""
     copilot_session = _make_copilot_session()
     client = _make_copilot_client(copilot_session)
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4o")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4o")
     config = SessionConfig(prompt="do something", model="gpt-4.1")
 
     with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
@@ -161,7 +179,7 @@ def test_run_session_passes_gpt41_model(history_db):
 # ---------------------------------------------------------------------------
 
 
-def test_full_run_sync_flow_with_gpt41(history_db):
+def test_full_run_sync_flow_with_gpt41(session_store):
     """
     Full flow: run() -> _run_session() -> copilot session created with gpt-4.1
     -> DB record updated -> returns completed status.
@@ -171,7 +189,7 @@ def test_full_run_sync_flow_with_gpt41(history_db):
     copilot_session = _make_copilot_session("copilot-session-xyz")
     client = _make_copilot_client(copilot_session)
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4o")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4o")
     config = SessionConfig(prompt="write tests", model="gpt-4.1", workdir="/tmp/test")
 
     with patch("simple_orchestrator_worker.vendors.github_copilot.CopilotClient", return_value=client):
@@ -179,7 +197,7 @@ def test_full_run_sync_flow_with_gpt41(history_db):
 
     assert final_status == "completed"
 
-    record = history_db.get(session_id)
+    record = session_store.records.get(session_id)
     assert record is not None
     assert record.vendor == "github_copilot"
     assert record.status == "completed"
@@ -198,11 +216,11 @@ def test_full_run_sync_flow_with_gpt41(history_db):
 # ---------------------------------------------------------------------------
 
 
-def test_vendor_kill_calls_abort(history_db):
+def test_vendor_kill_calls_abort(session_store):
     """kill_sync() / _vendor_kill() must call session.abort() on active handle."""
     copilot_session = _make_copilot_session()
 
-    vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4.1")
 
     # Manually insert handle to simulate mid-run state
     vendor._active_handles["fake-session"] = copilot_session
@@ -213,7 +231,7 @@ def test_vendor_kill_calls_abort(history_db):
     assert "fake-session" not in vendor._active_handles
 
 
-def test_vendor_kill_noop_when_no_handle(history_db):
+def test_vendor_kill_noop_when_no_handle(session_store):
     """_vendor_kill on unknown session_id must not raise."""
-    vendor = GithubCopilotVendor(history_db, model="gpt-4.1")
+    vendor = GithubCopilotVendor(session_store, model="gpt-4.1")
     asyncio.run(vendor._vendor_kill("nonexistent-session"))  # should not raise
