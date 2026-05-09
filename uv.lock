@@ -1262,7 +1262,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "simple-orchestrator" },
-    { name = "simple-orchestrator-tui" },
     { name = "simple-orchestrator-worker" },
 ]
 
@@ -1278,7 +1277,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "simple-orchestrator", editable = "packages/simple-orchestrator" },
-    { name = "simple-orchestrator-tui", editable = "packages/simple-orchestrator-tui" },
     { name = "simple-orchestrator-worker", editable = "packages/simple-orchestrator-worker" },
 ]
 
