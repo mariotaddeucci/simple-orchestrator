@@ -62,7 +62,6 @@ class EnqueueModal(ModalScreen[_EnqueueResult | None]):
         height: auto;
         max-height: 95%;
         border: round #7aa2f7;
-        border-title: "Enqueue";
         padding: 1 2;
         background: #24283b;
     }
@@ -77,7 +76,7 @@ class EnqueueModal(ModalScreen[_EnqueueResult | None]):
 
     def compose(self) -> ComposeResult:
         options = [(f"{a.name} ({a.id})", a.id) for a in self._agents]
-        with Vertical():
+        with Vertical(id="container"):
             if options:
                 yield Select(options, prompt="Select agent", id="agent_select")
             else:
@@ -87,6 +86,9 @@ class EnqueueModal(ModalScreen[_EnqueueResult | None]):
             with Horizontal():
                 yield Button("Cancel", variant="error", id="cancel")
                 yield Button("Enqueue", variant="primary", id="enqueue")
+
+    def on_mount(self) -> None:
+        self.query_one("#container", Vertical).border_title = "Enqueue"
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -124,7 +126,6 @@ class ConfirmModal(ModalScreen[bool]):
         max-width: 90;
         height: auto;
         border: round #7aa2f7;
-        border-title: "Confirm";
         padding: 1 2;
         background: #24283b;
     }
@@ -138,11 +139,14 @@ class ConfirmModal(ModalScreen[bool]):
         self._message = message
 
     def compose(self) -> ComposeResult:
-        with Vertical():
+        with Vertical(id="container"):
             yield Label(self._message)
             with Horizontal():
                 yield Button("Cancel", variant="error", id="cancel")
                 yield Button("OK", variant="primary", id="ok")
+
+    def on_mount(self) -> None:
+        self.query_one("#container", Vertical).border_title = "Confirm"
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -164,7 +168,6 @@ class AgentEditorModal(ModalScreen[_AgentUpsertResult | None]):
         height: auto;
         max-height: 95%;
         border: round #7aa2f7;
-        border-title: "Agent";
         padding: 1 2;
         background: #24283b;
     }
@@ -182,7 +185,7 @@ class AgentEditorModal(ModalScreen[_AgentUpsertResult | None]):
         self._agent = agent
 
     def compose(self) -> ComposeResult:
-        with Vertical():
+        with Vertical(id="container"):
             yield Label("Create" if self._agent is None else f"Edit: {self._agent.name}")
             with Horizontal(classes="row"):
                 yield Input(value=self._agent.id if self._agent else str(ULID()), placeholder="id", id="id")
@@ -220,6 +223,9 @@ class AgentEditorModal(ModalScreen[_AgentUpsertResult | None]):
             with Horizontal():
                 yield Button("Cancel", variant="error", id="cancel")
                 yield Button("Save", variant="primary", id="save")
+
+    def on_mount(self) -> None:
+        self.query_one("#container", Vertical).border_title = "Agent"
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -275,7 +281,6 @@ class McpEditorModal(ModalScreen[_McpUpsertResult | None]):
         height: auto;
         max-height: 95%;
         border: round #7aa2f7;
-        border-title: "MCP";
         padding: 1 2;
         background: #24283b;
     }
@@ -293,7 +298,7 @@ class McpEditorModal(ModalScreen[_McpUpsertResult | None]):
         self._mcp = mcp
 
     def compose(self) -> ComposeResult:
-        with Vertical():
+        with Vertical(id="container"):
             yield Label("Create" if self._mcp is None else f"Edit: {self._mcp.name}")
             with Horizontal(classes="row"):
                 yield Input(value=self._mcp.id if self._mcp else str(ULID()), placeholder="id", id="id")
@@ -336,6 +341,9 @@ class McpEditorModal(ModalScreen[_McpUpsertResult | None]):
             with Horizontal():
                 yield Button("Cancel", variant="error", id="cancel")
                 yield Button("Save", variant="primary", id="save")
+
+    def on_mount(self) -> None:
+        self.query_one("#container", Vertical).border_title = "MCP"
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -391,7 +399,6 @@ class EventEditorModal(ModalScreen[_EventMutationResult | None]):
         height: auto;
         max-height: 95%;
         border: round #7aa2f7;
-        border-title: "Scheduler";
         padding: 1 2;
         background: #24283b;
     }
@@ -411,7 +418,7 @@ class EventEditorModal(ModalScreen[_EventMutationResult | None]):
 
     def compose(self) -> ComposeResult:
         agent_options = [(f"{a.name} ({a.id})", a.id) for a in self._agents]
-        with Vertical():
+        with Vertical(id="container"):
             yield Label("Create" if self._event is None else f"Edit: {self._event.name}")
             yield Input(value=self._event.name if self._event else "", placeholder="name", id="name", classes="row")
             if agent_options:
@@ -463,6 +470,9 @@ class EventEditorModal(ModalScreen[_EventMutationResult | None]):
             with Horizontal():
                 yield Button("Cancel", variant="error", id="cancel")
                 yield Button("Save", variant="primary", id="save")
+
+    def on_mount(self) -> None:
+        self.query_one("#container", Vertical).border_title = "Scheduler"
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -564,11 +574,6 @@ class OrchestratorTUI(App[None]):
         margin: 1;
     }
 
-    #agents_panel { border-title: "Agents"; }
-    #mcps_panel { border-title: "MCP"; }
-    #events_panel { border-title: "Scheduler"; }
-    #logs_panel { border-title: "Logs"; }
-
     #kanban {
         height: 1fr;
         margin: 1;
@@ -580,10 +585,6 @@ class OrchestratorTUI(App[None]):
         padding: 1 2;
         margin: 0 1;
     }
-
-    #pending_col { border-title: "Pendente"; }
-    #running_col { border-title: "Em execução"; }
-    #done_col { border-title: "Concluído (recente)"; }
 
     #logs_panel {
         height: 14;
@@ -609,10 +610,12 @@ class OrchestratorTUI(App[None]):
         client: IOrchestratorClient,
         *,
         background_worker: Callable[[], Coroutine[Any, Any, None]] | None = None,
+        refresh_interval_seconds: float = 2.0,
     ) -> None:
         super().__init__()
         self._client = client
         self._background_worker = background_worker
+        self._refresh_interval_seconds = refresh_interval_seconds
         self._agents: list[AgentRecord] = []
         self._events: list[EventRecord] = []
         self._mcps: list[McpRecord] = []
@@ -653,6 +656,15 @@ class OrchestratorTUI(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.query_one("#agents_panel", Vertical).border_title = "Agents"
+        self.query_one("#mcps_panel", Vertical).border_title = "MCP"
+        self.query_one("#events_panel", Vertical).border_title = "Scheduler"
+        self.query_one("#logs_panel", Vertical).border_title = "Logs"
+
+        self.query_one("#pending_col", Vertical).border_title = "Pendente"
+        self.query_one("#running_col", Vertical).border_title = "Em execução"
+        self.query_one("#done_col", Vertical).border_title = "Concluído (recente)"
+
         agents_table = self.query_one("#agents", DataTable)
         agents_table.cursor_type = "row"
         agents_table.add_column("id")
@@ -698,7 +710,8 @@ class OrchestratorTUI(App[None]):
         if self._background_worker is not None:
             self.run_worker(self._background_worker, exclusive=False)
 
-        self.set_interval(2.0, self.action_refresh)
+        if self._refresh_interval_seconds > 0:
+            self.set_interval(self._refresh_interval_seconds, self.action_refresh)
         self.action_refresh()
         self._log("Ready.")
 

@@ -925,11 +925,25 @@ dependencies = [
     { name = "textual" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "simple-orchestrator-database" },
+    { name = "simple-orchestrator-worker" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "simple-orchestrator-api-client", editable = "packages/simple-orchestrator-api-client" },
     { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
     { name = "textual", specifier = ">=3.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "simple-orchestrator-database", editable = "packages/simple-orchestrator-database" },
+    { name = "simple-orchestrator-worker", editable = "packages/simple-orchestrator-worker" },
 ]
 
 [[package]]
