@@ -27,6 +27,8 @@ Correct persistence: atomicity (claim/dequeue), consistent status transitions, a
 | `sessions` | `id` (ULID) | `vendor`, `status`, `vendor_session_id`, timestamps |
 | `memory` | `id` (ULID) | `agent_id`, `description`, `content`, `updated_at` |
 | `worker_heartbeats` | `id` (ULID) | `type`, `name`, `last_heartbeat_at` |
+| `mcps` | `id` (ULID) | Global MCP server definitions available to all agents |
+| `events` | `id` (ULID) | Scheduled events with `next_run`, `interval`/`cron`, `agent_id` |
 
 ## Key behaviors
 
@@ -41,6 +43,7 @@ Correct persistence: atomicity (claim/dequeue), consistent status transitions, a
 - No HTTP logic here — that belongs to `webapi` / `api-client`.
 - Schema/query changes must align with `core` model updates.
 - Keep `depends_on` checking and `dequeue_next()` atomic to avoid double-dispatch under concurrent workers.
+- Boolean column filters should be done in Python (post-fetch) to avoid SQLModel `Literal` type issues.
 
 ## Quick validation
 

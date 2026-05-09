@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import simple_orchestrator_core.models.agent_record
+import simple_orchestrator_core.models.event_record
+import simple_orchestrator_core.models.mcp_record
 import simple_orchestrator_core.models.memory_record
 import simple_orchestrator_core.models.queue_item
 import simple_orchestrator_core.models.session

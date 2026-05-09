@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol
 
-from simple_orchestrator_api_client import OrchestratorApiClient
 from simple_orchestrator_core.api import SessionCreateRequest, SessionUpdateRequest
+from simple_orchestrator_core.interfaces import IOrchestratorClient
 from simple_orchestrator_core.models.session import SessionRecord
 
 
@@ -22,7 +22,7 @@ class SessionStore(Protocol):
 
 
 class ApiSessionStore:
-    def __init__(self, client: OrchestratorApiClient) -> None:
+    def __init__(self, client: IOrchestratorClient) -> None:
         self._client = client
 
     async def save(self, record: SessionRecord) -> None:

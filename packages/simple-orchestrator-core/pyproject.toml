@@ -5,6 +5,7 @@ description = "Core models + REST API interfaces for simple-orchestrator"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "croniter>=6.2.2",
     "pydantic>=2.13.3",
     "pydantic-settings>=2.14.0",
     "python-ulid>=3.1.0",

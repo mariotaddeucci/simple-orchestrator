@@ -7,10 +7,10 @@ from datetime import UTC, datetime
 import pytest
 from simple_orchestrator_core.api import QueueDequeueResponse, QueueUpdateRequest
 from simple_orchestrator_core.models.agent_record import AgentRecord
-from simple_orchestrator_core.models.mcp import McpStdioConfig
+from simple_orchestrator_core.models.mcp_record import McpRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionConfig
-from simple_orchestrator_core.settings import WebApiSettings, WorkerSettings
+from simple_orchestrator_core.settings import WorkerSettings
 from simple_orchestrator_webapi.session_config_builder import build_session_config
 from simple_orchestrator_worker.worker_runner import WorkerRunner
 from ulid import ULID
@@ -27,9 +27,13 @@ def _queue_item(*, agent_id: str, prompt: str) -> QueueItem:
 
 
 def test_build_session_config_merges_mcp_and_skills_and_workdir():
-    settings = WebApiSettings(
-        mcp_servers={"global_tool": McpStdioConfig(type="stdio", command="global-cmd", args=[])},
-        skills=["global-skill"],
+    global_mcp = McpRecord(
+        id="global_tool",
+        name="global_tool",
+        type="stdio",
+        command="global-cmd",
+        args=[],
+        created_at=datetime.now(UTC),
     )
     agent = AgentRecord(
         id="agent-1",
@@ -39,16 +43,15 @@ def test_build_session_config_merges_mcp_and_skills_and_workdir():
         model="m",
         workdir="/agent-dir",
         created_at=datetime.now(UTC),
-        mcp_servers={"agent_tool": McpStdioConfig(type="stdio", command="agent-cmd", args=[])},
+        mcp_servers={"agent_tool": {"type": "stdio", "command": "agent-cmd", "args": []}},
         skills=["agent-skill"],
     )
     item = _queue_item(agent_id=agent.id, prompt="task")
     item.workdir = "/task-dir"
 
-    cfg = build_session_config(settings=settings, agent=agent, item=item)
+    cfg = build_session_config(agent=agent, item=item, global_mcps=[global_mcp])
     assert "global_tool" in cfg.mcp_servers
     assert "agent_tool" in cfg.mcp_servers
-    assert "global-skill" in cfg.skills
     assert "agent-skill" in cfg.skills
     assert cfg.workdir == "/task-dir"
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import (
@@ -14,8 +14,6 @@ from pydantic_settings import (
 )
 from ulid import ULID
 
-from .models.mcp import McpConfig
-from .models.skill import SkillConfig
 from .validators import MAX_DESCRIPTION_LENGTH, ValidULID
 
 _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
@@ -71,12 +69,6 @@ class WebApiSettings(_OrchestratorSettingsBase):
     max_completed_age_days: int = Field(default=7, ge=1)
     heartbeat_ttl_seconds: float = Field(default=30.0, gt=0)
 
-    mcp_servers: dict[
-        str,
-        Annotated[McpConfig, Field(discriminator="type")],
-    ] = Field(default_factory=dict)
-    skills: list[str | SkillConfig] = Field(default_factory=list)
-
 
 class WorkerSettings(_OrchestratorSettingsBase):
     logs_dir: Path = Path("logs")
@@ -98,5 +90,8 @@ class TuiSettings(_OrchestratorSettingsBase):
     logs_dir: Path = Path("logs")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    db_path: str = "orchestrator.db"
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
+
+    standalone: bool = True

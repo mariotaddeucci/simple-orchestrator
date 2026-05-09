@@ -19,19 +19,22 @@ Predictable, stable UX; keep the TUI as a pure client (no persistence logic here
 
 ## UI components
 
-**`OrchestratorTUI`** — main app:
-- `DataTable` showing the queue (live refresh).
+**`OrchestratorTUI(client: IOrchestratorClient, *, background_worker=None)`** — main app:
+- Three tabs: **Queue**, **Agents**, **Events** (live refresh every 2 s).
 - Key bindings: `q` quit, `r` refresh, `a` enqueue.
-- Uses `OrchestratorApiClient` (HTTP) to fetch and update queue items.
+- `background_worker`: optional async callable run as a Textual `@work` worker on mount (used by standalone mode to embed `WorkerRunner`).
+- All data access goes through `client` — never imports DB or HTTP code directly.
 
 **`EnqueueModal`** — modal dialog:
-- Inputs: `agent_id`, `prompt`, `workdir`.
-- Submits via `api-client` `enqueue()`.
+- Shows an agent dropdown (populated from `client.list_agents()`).
+- Inputs: `agent_id` (or select), `prompt`, `workdir`.
+- Submits via `client.enqueue(EnqueueRequest(...))`.
 
 ## Development rules
 
-- No direct dependency on `database`/SQL — always go through the injected repository.
-- Flow changes must be validated by running the TUI against the chosen mode (direct DB or HTTP).
+- No direct dependency on `database`/SQL — always go through the injected `IOrchestratorClient`.
+- `simple-orchestrator tui` (distributed) injects `OrchestratorApiClient`; `simple-orchestrator standalone` injects `StandaloneClient`.
+- Flow changes must be validated by running the TUI against both modes.
 - UI state (selected row, filters) is ephemeral — never persist it.
 
 ## Quick validation

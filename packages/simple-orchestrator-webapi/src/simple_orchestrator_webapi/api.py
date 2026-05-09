@@ -12,6 +12,11 @@ from simple_orchestrator_core.api import (
     AgentUpsertRequest,
     EnqueueRequest,
     EnqueueResponse,
+    EventCreateRequest,
+    EventListResponse,
+    EventUpdateRequest,
+    McpCreateRequest,
+    McpListResponse,
     QueueDequeueResponse,
     QueueListResponse,
     QueueUpdateRequest,
@@ -20,6 +25,8 @@ from simple_orchestrator_core.api import (
     SessionUpdateRequest,
 )
 from simple_orchestrator_core.models.agent_record import AgentRecord
+from simple_orchestrator_core.models.event_record import EventRecord
+from simple_orchestrator_core.models.mcp_record import McpRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
 from simple_orchestrator_core.models.worker_heartbeat import (
@@ -28,6 +35,7 @@ from simple_orchestrator_core.models.worker_heartbeat import (
     WorkerHeartbeatStatus,
     WorkerType,
 )
+from simple_orchestrator_core.schedule import compute_next_run
 from simple_orchestrator_core.settings import WebApiSettings
 from simple_orchestrator_database import OrchestratorDB
 
@@ -87,6 +95,9 @@ async def send_heartbeat(request: Request, heartbeat: WorkerHeartbeat) -> dict[s
     return {"status": "ok"}
 
 
+# ── agents ────────────────────────────────────────────────────────────────────
+
+
 @router.get("/agents", response_model=AgentListResponse, dependencies=[Depends(_require_api_key)])
 async def list_agents(request: Request) -> AgentListResponse:
     db = _state(request).db
@@ -118,10 +129,12 @@ async def delete_agent(request: Request, agent_id: str) -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ── queue ─────────────────────────────────────────────────────────────────────
+
+
 @router.post("/queue", response_model=EnqueueResponse, dependencies=[Depends(_require_api_key)])
 async def enqueue(request: Request, req: EnqueueRequest) -> EnqueueResponse:
     db = _state(request).db
-    # Validate agent exists (agents live in DB now).
     agent = await anyio.to_thread.run_sync(lambda: db.get_agent(req.agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -173,24 +186,26 @@ async def cancel_queue_item(request: Request, item_id: str) -> dict[str, str]:
 async def dequeue_next(request: Request) -> QueueDequeueResponse:
     state = _state(request)
     db = state.db
-    settings = state.settings
     item = await anyio.to_thread.run_sync(db.dequeue_next)
     if not item:
         return Response(status_code=204)  # type: ignore[return-value]
 
     agent = await anyio.to_thread.run_sync(lambda: db.get_agent(item.agent_id))
     if not agent:
-        # Should never happen if enqueue validates agent existence; fail the item defensively.
         await anyio.to_thread.run_sync(lambda: db.update_queue_item(item.id, status="failed"))
         raise HTTPException(status_code=500, detail="Dequeued item references missing agent")
 
-    session_config = build_session_config(settings=settings, agent=agent, item=item)
+    global_mcps = await anyio.to_thread.run_sync(lambda: db.list_mcps(is_global=True, enabled=True))
+    session_config = build_session_config(agent=agent, item=item, global_mcps=global_mcps)
     return QueueDequeueResponse(
         item=item,
         vendor=agent.vendor,
         timeout_minutes=agent.task_timeout_minutes,
         session_config=session_config,
     )
+
+
+# ── sessions ──────────────────────────────────────────────────────────────────
 
 
 @router.get("/sessions", response_model=SessionListResponse, dependencies=[Depends(_require_api_key)])
@@ -221,6 +236,111 @@ async def update_session(request: Request, session_id: str, req: SessionUpdateRe
     db = _state(request).db
     await anyio.to_thread.run_sync(lambda: db.update_session_status(session_id, req))
     return {"status": "ok"}
+
+
+# ── mcps ──────────────────────────────────────────────────────────────────────
+
+
+@router.get("/mcps", response_model=McpListResponse, dependencies=[Depends(_require_api_key)])
+async def list_mcps(
+    request: Request,
+    is_global: bool | None = None,  # noqa: FBT001
+    enabled: bool | None = None,  # noqa: FBT001
+) -> McpListResponse:
+    db = _state(request).db
+    mcps = await anyio.to_thread.run_sync(lambda: db.list_mcps(is_global=is_global, enabled=enabled))
+    return McpListResponse(mcps=mcps)
+
+
+@router.get("/mcps/{mcp_id}", response_model=McpRecord, dependencies=[Depends(_require_api_key)])
+async def get_mcp(request: Request, mcp_id: str) -> McpRecord:
+    db = _state(request).db
+    mcp = await anyio.to_thread.run_sync(lambda: db.get_mcp(mcp_id))
+    if not mcp:
+        raise HTTPException(status_code=404, detail="MCP not found")
+    return mcp
+
+
+@router.post("/mcps", response_model=McpRecord, dependencies=[Depends(_require_api_key)])
+async def upsert_mcp(request: Request, req: McpCreateRequest) -> McpRecord:
+    db = _state(request).db
+    return await anyio.to_thread.run_sync(lambda: db.upsert_mcp(req))
+
+
+@router.delete("/mcps/{mcp_id}", dependencies=[Depends(_require_api_key)])
+async def delete_mcp(request: Request, mcp_id: str) -> dict[str, str]:
+    db = _state(request).db
+    deleted = await anyio.to_thread.run_sync(lambda: db.delete_mcp(mcp_id))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="MCP not found")
+    return {"status": "ok"}
+
+
+# ── events ────────────────────────────────────────────────────────────────────
+
+
+@router.get("/events", response_model=EventListResponse, dependencies=[Depends(_require_api_key)])
+async def list_events(request: Request, enabled: bool | None = None) -> EventListResponse:  # noqa: FBT001
+    db = _state(request).db
+    events = await anyio.to_thread.run_sync(lambda: db.list_events(enabled=enabled))
+    return EventListResponse(events=events)
+
+
+@router.get("/events/{event_id}", response_model=EventRecord, dependencies=[Depends(_require_api_key)])
+async def get_event(request: Request, event_id: str) -> EventRecord:
+    db = _state(request).db
+    event = await anyio.to_thread.run_sync(lambda: db.get_event(event_id))
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
+
+@router.post("/events", response_model=EventRecord, dependencies=[Depends(_require_api_key)])
+async def create_event(request: Request, req: EventCreateRequest) -> EventRecord:
+    db = _state(request).db
+    agent = await anyio.to_thread.run_sync(lambda: db.get_agent(req.agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return await anyio.to_thread.run_sync(lambda: db.create_event(req))
+
+
+@router.patch("/events/{event_id}", response_model=EventRecord, dependencies=[Depends(_require_api_key)])
+async def update_event(request: Request, event_id: str, req: EventUpdateRequest) -> EventRecord:
+    db = _state(request).db
+    event = await anyio.to_thread.run_sync(lambda: db.update_event(event_id, req))
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
+
+@router.delete("/events/{event_id}", dependencies=[Depends(_require_api_key)])
+async def delete_event(request: Request, event_id: str) -> dict[str, str]:
+    db = _state(request).db
+    deleted = await anyio.to_thread.run_sync(lambda: db.delete_event(event_id))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {"status": "ok"}
+
+
+@router.post("/events/{event_id}/trigger", response_model=EnqueueResponse, dependencies=[Depends(_require_api_key)])
+async def trigger_event(request: Request, event_id: str) -> EnqueueResponse:
+    db = _state(request).db
+    event = await anyio.to_thread.run_sync(lambda: db.get_event(event_id))
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    agent = await anyio.to_thread.run_sync(lambda: db.get_agent(event.agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent referenced by event not found")
+    item = await anyio.to_thread.run_sync(
+        lambda: db.enqueue(agent_id=event.agent_id, prompt=event.prompt, workdir=event.workdir),
+    )
+    next_run = compute_next_run(
+        event.schedule_type,
+        interval_minutes=event.interval_minutes,
+        cron_expression=event.cron_expression,
+    )
+    await anyio.to_thread.run_sync(lambda: db.update_next_run(event_id, next_run))
+    return EnqueueResponse(item=item)
 
 
 def create_app() -> FastAPI:

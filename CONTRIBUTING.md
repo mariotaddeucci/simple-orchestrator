@@ -19,13 +19,13 @@ O projeto é um **UV workspace** com 7 pacotes. O princípio central é a separa
 
 | Pacote | Módulo | Foco |
 |---|---|---|
-| `simple-orchestrator` | `simple_orchestrator` | Ponto de entrada CLI (`worker`, `webapi`) |
+| `simple-orchestrator` | `simple_orchestrator` | Ponto de entrada CLI (`worker`, `webapi`, `tui`) |
 | `simple-orchestrator-core` | `simple_orchestrator_core` | **Contratos**: Pydantic models, Protocol interfaces, settings, validators |
 | `simple-orchestrator-database` | `simple_orchestrator_database` | **Persistência**: implementa `IOrchestratorRepository` via SQLite/SQLModel |
 | `simple-orchestrator-webapi` | `simple_orchestrator_webapi` | **REST API**: FastAPI; delega todo acesso a dados ao pacote `database` |
-| `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execução**: fila de tarefas, vendors (Claude/OpenCode/Copilot) |
-| `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **Cliente HTTP**: implementa `IOrchestratorRepository` via REST |
-| `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consome `IOrchestratorRepository` |
+| `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execução**: fila de tarefas, agendamento de eventos, vendors (Claude/OpenCode/Copilot) |
+| `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **Cliente HTTP**: consome a REST API |
+| `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consome a REST API |
 
 ---
 
@@ -33,74 +33,67 @@ O projeto é um **UV workspace** com 7 pacotes. O princípio central é a separa
 
 ### Modo standalone
 
-TUI e worker rodam no mesmo host e acessam o SQLite diretamente via `OrchestratorDB`.
-Não há serviço de rede entre os componentes.
+No modo standalone, o comando `simple-orchestrator tui` gerencia o ciclo de vida de todos os componentes. A WebAPI e o worker são iniciados como **subprocessos** da TUI e encerrados automaticamente quando a TUI fecha.
 
 ```
-  simple-orchestrator-tui          simple-orchestrator-worker
-  ┌──────────────────────┐         ┌──────────────────────────┐
-  │  Textual TUI         │         │  QueueRunner             │
-  │  (visualiza fila,    │         │  (processa tarefas,      │
-  │   enfileira tarefas) │         │   executa vendors)       │
-  └──────────┬───────────┘         └────────────┬─────────────┘
-             │                                  │
-             │  IOrchestratorRepository         │  IOrchestratorRepository
-             │  (injeção direta)                │  (injeção direta)
-             │                                  │
-             └──────────────┬───────────────────┘
-                            │
-                            ▼
-             simple-orchestrator-database
-             ┌──────────────────────────────┐
-             │  OrchestratorDB              │
-             │  agents / queue / sessions   │
-             │  memory / heartbeats         │
-             └──────────────┬───────────────┘
-                            │
-                            ▼
-                       ┌─────────┐
-                       │ SQLite  │
-                       └─────────┘
+  simple-orchestrator tui (processo pai)
+  ┌────────────────────────────────────────────────────────────┐
+  │                                                            │
+  │  TUI (Textual)          WebAPI (subprocesso)              │
+  │  ┌──────────────┐       ┌────────────────────┐            │
+  │  │  Queue tab   │       │  FastAPI :8765      │            │
+  │  │  Agents tab  │◄─────►│  /queue /agents     │            │
+  │  │  Events tab  │  HTTP │  /mcps /events      │            │
+  │  └──────────────┘       └────────────┬───────┘            │
+  │                                      │                    │
+  │  Worker (subprocesso)                │ OrchestratorDB     │
+  │  ┌──────────────┐       ┌────────────▼───────┐            │
+  │  │  QueueRunner │◄─────►│  SQLite             │            │
+  │  │  EventSched  │  HTTP └────────────────────┘            │
+  │  └──────────────┘                                         │
+  └────────────────────────────────────────────────────────────┘
+```
+
+Para desativar o modo standalone e conectar a uma WebAPI já existente:
+
+```bash
+# Opção 1: flag explícita
+uv run simple-orchestrator tui --distributed
+
+# Opção 2: variável de ambiente
+ORCHESTRATOR_STANDALONE=false uv run simple-orchestrator tui
 ```
 
 ### Modo distribuído
 
-TUI e worker se comunicam com a WebAPI via HTTP. `simple-orchestrator-api-client` implementa
-a mesma interface (`IOrchestratorRepository`) que o banco; o código consumidor não muda.
+TUI e worker se comunicam com a WebAPI via HTTP. Cada componente roda em processo independente.
 
 ```
   simple-orchestrator-tui          simple-orchestrator-worker
   ┌──────────────────────┐         ┌──────────────────────────┐
   │  Textual TUI         │         │  QueueRunner             │
-  │  (visualiza fila,    │         │  (processa tarefas,      │
-  │   enfileira tarefas) │         │   executa vendors)       │
+  │  (Queue/Agents/      │         │  (processa tarefas,      │
+  │   Events tabs)       │         │   agenda eventos)        │
   └──────────┬───────────┘         └────────────┬─────────────┘
              │                                  │
-             │  IOrchestratorRepository         │  IOrchestratorRepository
-             │  (via api-client)                │  (via api-client)
+             │  HTTP / REST                     │  HTTP / REST
              │                                  │
              └──────────────┬───────────────────┘
                             │
-              simple-orchestrator-api-client
-              ┌─────────────────────────────┐
-              │  ApiClient                  │
-              │  HTTP impl da interface     │
-              └──────────────┬──────────────┘
-                             │  HTTP / REST
-                             ▼
              simple-orchestrator-webapi
              ┌─────────────────────────────────┐
              │  FastAPI                        │
-             │  /queue /agents /sessions ...   │
+             │  /queue /agents /sessions       │
+             │  /mcps /events /health          │
              └──────────────┬──────────────────┘
                             │
-                            ▼
              simple-orchestrator-database
              ┌──────────────────────────────┐
              │  OrchestratorDB              │
+             │  agents / queue / sessions   │
+             │  mcps / events / heartbeats  │
              └──────────────┬───────────────┘
                             │
-                            ▼
                        ┌─────────┐
                        │ SQLite  │
                        └─────────┘
@@ -111,31 +104,34 @@ a mesma interface (`IOrchestratorRepository`) que o banco; o código consumidor 
 ```
   simple-orchestrator-core  ◄── importado por TODOS os outros pacotes
   │
-  ├── models/          Pydantic v2 (SessionRecord, QueueItem, AgentRecord, ...)
+  ├── models/          Pydantic v2 (SessionRecord, QueueItem, AgentRecord,
+  │                                 McpRecord, EventRecord, ...)
   ├── interfaces.py    IOrchestratorRepository (Protocol = contrato)
   ├── api.py           Request/Response Pydantic (compartilhados com api-client)
   ├── settings.py      WebApiSettings, WorkerSettings, TuiSettings
+  ├── schedule.py      compute_next_run() — cálculo de próxima execução (interval/cron)
   └── validators.py    ValidULID, ValidWorkdir, ValidAgentId, ...
 
   simple-orchestrator-database
   └── OrchestratorDB  implementa IOrchestratorRepository (SQLite/SQLModel)
 
   simple-orchestrator-api-client
-  └── ApiClient       implementa IOrchestratorRepository (HTTP)
+  └── ApiClient       cliente HTTP para a REST API
 
   simple-orchestrator-webapi
   ├── FastAPI routes  delega para OrchestratorDB (do pacote database)
-  └── db/             shim de re-exportação (from simple_orchestrator_database import ...)
+  └── session_config_builder  monta SessionConfig a partir de agente + MCPs globais do DB
 
   simple-orchestrator-worker
-  ├── QueueRunner     consome IOrchestratorRepository (standalone ou via cliente HTTP)
-  ├── vendors/base    BaseVendor ABC (vendor_name, _run_session, _vendor_kill, execute_session, list_models)
+  ├── QueueRunner     dequeue/dispatch com controle de concorrência
+  ├── EventScheduler  agenda eventos periódicos (interval ou cron) via loop interno
+  ├── vendors/base    BaseVendor ABC
   ├── vendors/claude_code
   ├── vendors/opencode
   └── vendors/copilot
 
   simple-orchestrator-tui
-  └── Textual TUI     consome IOrchestratorRepository (standalone ou via cliente HTTP)
+  └── Textual TUI     tabs Queue / Agents / Events; consome a REST API via api-client
 ```
 
 ---
@@ -144,9 +140,11 @@ a mesma interface (`IOrchestratorRepository`) que o banco; o código consumidor 
 
 **Core é o único pacote importado por todos.** Nenhum pacote importa de outro (exceto `database` → `core`, `webapi` → `database` + `core`, etc.). Isso previne dependências circulares.
 
-**`IOrchestratorRepository` é o ponto de injeção.** Código que lê/escreve dados deve tipificar contra a Protocol, nunca contra `OrchestratorDB` diretamente. Isso é o que permite trocar SQLite por HTTP sem mudar o consumidor.
+**Orientado a banco de dados.** Agentes, MCPs e eventos são gerenciados via API REST (e persistidos no SQLite). Não há mais configuração de agentes/MCPs via TOML — o TOML só define parâmetros de infraestrutura (db_path, porta, log_level, etc.).
 
-**Pydantic models em `core/api.py` são compartilhados.** O `api-client` e o `webapi` usam os mesmos `Request`/`Response`; divergência de schema é detectada em tempo de compilação.
+**Modo standalone = subprocesso.** Ao rodar `simple-orchestrator tui`, a WebAPI e o worker são automaticamente iniciados como subprocessos e encerrados junto com a TUI.
+
+**`IOrchestratorRepository` é o ponto de injeção.** Código que lê/escreve dados deve tipificar contra a Protocol, nunca contra `OrchestratorDB` diretamente.
 
 **Vendors são assíncronos, DB é síncrono.** `OrchestratorDB` usa SQLAlchemy síncrono. A WebAPI envolve chamadas DB em `anyio.to_thread.run_sync()` para não bloquear o event loop.
 

@@ -18,7 +18,7 @@ Maintain parity with `simple-orchestrator-core/src/.../api.py` and `api-client`.
 | `src/simple_orchestrator_webapi/api.py` | All FastAPI routes |
 | `src/simple_orchestrator_webapi/webapi_cli.py` | CLI entry point (`uvicorn` startup) |
 | `src/simple_orchestrator_webapi/logging_config.py` | `get_internal_logger`, `get_vendor_logger`, `setup_logging` |
-| `src/simple_orchestrator_webapi/session_config_builder.py` | `build_session_config(agent, queue_item)` → `SessionConfig` |
+| `src/simple_orchestrator_webapi/session_config_builder.py` | `build_session_config(agent, queue_item)` → `SessionConfig`; fetches global MCPs from DB |
 | `src/simple_orchestrator_webapi/db/orchestrator.py` | DB dependency injection helper |
 
 ## Endpoints
