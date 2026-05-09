@@ -15,7 +15,6 @@ class AgentRecord(SQLModel, table=True):
     prompt: str
     model: str | None = None
     vendor: str
-    workdir: str | None = None
     task_timeout_minutes: float | None = None
     # Stored as raw JSON. Interpreted by Web API when building SessionConfig.
     mcp_servers: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=True))

@@ -1,7 +1,6 @@
 """Integration tests for OrchestratorDB — queue, memory, cron state."""
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from simple_orchestrator_core.models.session import SessionRecord
@@ -279,23 +278,23 @@ def test_enqueue_agent_nickname_on_agent(db):
 
 def test_enqueue_with_workdir(db):
     agent_id = "test-agent-1"
-    item = db.enqueue(agent_id, "task with workdir", workdir="/my/project")
-    assert item.workdir == "/my/project"
+    remote = "https://github.com/org/repo.git"
+    item = db.enqueue(agent_id, "task with workdir", workdir=remote)
+    assert item.workdir == remote
 
     fetched = db.get_queue_item(item.id)
     assert fetched is not None
-    assert fetched.workdir == "/my/project"
+    assert fetched.workdir == remote
 
 
-def test_enqueue_without_workdir_creates_temp_dir(db):
+def test_enqueue_without_workdir_leaves_workdir_null(db):
     agent_id = "test-agent-1"
     item = db.enqueue(agent_id, "task no workdir")
-    assert item.workdir is not None
-    assert Path(item.workdir).exists()
+    assert item.workdir is None
 
     fetched = db.get_queue_item(item.id)
     assert fetched is not None
-    assert fetched.workdir == item.workdir
+    assert fetched.workdir is None
 
 
 def test_sessions_table_accessible_from_orchestrator_db(db):

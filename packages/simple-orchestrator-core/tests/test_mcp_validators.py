@@ -193,34 +193,37 @@ class TestValidWorkdir:
     def test_none_passes(self):
         assert _valid_workdir(None) is None
 
-    def test_absolute_path_passes(self):
-        assert _valid_workdir("/workspace/project") == "/workspace/project"
+    def test_https_remote_passes(self):
+        assert _valid_workdir("https://github.com/org/repo.git") == "https://github.com/org/repo.git"
 
-    def test_relative_path_passes(self):
-        assert _valid_workdir("project/src") == "project/src"
+    def test_ssh_remote_passes(self):
+        assert _valid_workdir("ssh://git@github.com/org/repo.git") == "ssh://git@github.com/org/repo.git"
 
-    def test_path_traversal_unix_rejected(self):
+    def test_scp_remote_passes(self):
+        assert _valid_workdir("git@github.com:org/repo.git") == "git@github.com:org/repo.git"
+
+    def test_local_path_absolute_rejected(self):
         with pytest.raises(ValidationError):
-            _valid_workdir("/workspace/../../etc/passwd")
+            _valid_workdir("/workspace/project")
 
-    def test_path_traversal_windows_style_rejected(self):
+    def test_local_path_relative_rejected(self):
         with pytest.raises(ValidationError):
-            _valid_workdir("workspace\\..\\..\\Windows\\system32")
+            _valid_workdir("project/src")
 
-    def test_path_traversal_leading_rejected(self):
+    def test_path_traversal_in_remote_rejected(self):
         with pytest.raises(ValidationError):
-            _valid_workdir("../escape")
+            _valid_workdir("https://github.com/org/../repo.git")
 
     def test_null_byte_rejected(self):
         with pytest.raises(ValidationError):
-            _valid_workdir("/workspace/\x00evil")
+            _valid_workdir("https://github.com/org/repo.git\x00evil")
 
     def test_too_long_rejected(self):
         with pytest.raises(ValidationError):
-            _valid_workdir("/workspace/" + "a" * MAX_WORKDIR_LENGTH)
+            _valid_workdir("https://github.com/" + "a" * MAX_WORKDIR_LENGTH)
 
     def test_max_length_passes(self):
-        v = "/" + "a" * (MAX_WORKDIR_LENGTH - 1)
+        v = "https://x/" + "a" * (MAX_WORKDIR_LENGTH - len("https://x/"))
         assert _valid_workdir(v) == v
 
 
@@ -265,7 +268,7 @@ class TestTaskSpec:
         with pytest.raises(ValidationError):
             _TaskSpec(agent_id="ag", prompt="x" * (MAX_PROMPT_LENGTH + 1))
 
-    def test_path_traversal_workdir_rejected(self):
+    def test_invalid_workdir_rejected(self):
         with pytest.raises(ValidationError):
             _TaskSpec(agent_id="ag", prompt="p", workdir="../../etc")
 

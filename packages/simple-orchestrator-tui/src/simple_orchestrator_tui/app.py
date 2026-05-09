@@ -82,7 +82,7 @@ class EnqueueModal(ModalScreen[_EnqueueResult | None]):
                 yield Select(options, prompt="Select agent", id="agent_select")
             else:
                 yield Input(placeholder="agent_id", id="agent_id")
-            yield Input(placeholder="workdir (optional)", id="workdir")
+            yield Input(placeholder="git remote (optional)", id="workdir")
             yield TextArea("", id="prompt")
             with Horizontal():
                 yield Button("Cancel", variant="error", id="cancel")
@@ -200,11 +200,6 @@ class AgentEditorModal(ModalScreen[_AgentUpsertResult | None]):
                     placeholder="nickname (optional)",
                     id="nickname",
                 )
-                yield Input(
-                    value=self._agent.workdir or "" if self._agent else "",
-                    placeholder="workdir (optional)",
-                    id="workdir",
-                )
             yield Input(
                 value=str(self._agent.task_timeout_minutes) if self._agent and self._agent.task_timeout_minutes else "",
                 placeholder="task_timeout_minutes (optional)",
@@ -240,7 +235,6 @@ class AgentEditorModal(ModalScreen[_AgentUpsertResult | None]):
 
         model = self.query_one("#model", Input).value.strip() or None
         nickname = self.query_one("#nickname", Input).value.strip() or None
-        workdir = self.query_one("#workdir", Input).value.strip() or None
         timeout_raw = self.query_one("#timeout", Input).value.strip()
         timeout_minutes = float(timeout_raw) if timeout_raw else None
 
@@ -261,7 +255,6 @@ class AgentEditorModal(ModalScreen[_AgentUpsertResult | None]):
             nickname=nickname,
             vendor=vendor,
             model=model,
-            workdir=workdir,
             task_timeout_minutes=timeout_minutes,
             prompt=prompt,
             mcp_servers=mcp_servers,
@@ -438,7 +431,7 @@ class EventEditorModal(ModalScreen[_EventMutationResult | None]):
                 )
             yield Input(
                 value=self._event.workdir or "" if self._event else "",
-                placeholder="workdir (optional)",
+                placeholder="git remote (optional)",
                 id="workdir",
                 classes="row",
             )

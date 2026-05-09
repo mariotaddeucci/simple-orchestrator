@@ -27,7 +27,7 @@ Predictable, stable UX; keep the TUI as a pure client (no persistence logic here
 
 **`EnqueueModal`** — modal dialog:
 - Shows an agent dropdown (populated from `client.list_agents()`).
-- Inputs: `agent_id` (or select), `prompt`, `workdir`.
+- Inputs: `agent_id` (or select), `prompt`, `workdir` (git remote URL, optional).
 - Submits via `client.enqueue(EnqueueRequest(...))`.
 
 ## Development rules

@@ -13,6 +13,7 @@ from simple_orchestrator_core.settings import WorkerSettings
 from ulid import ULID
 
 from .logging_config import get_internal_logger
+from .workdir import git_cache_dir
 
 logger = get_internal_logger(__name__)
 
@@ -103,7 +104,7 @@ class WorkerRunner:
 
     async def _run_lease(self, lease: QueueDequeueResponse, limiter: CapacityLimiter) -> None:
         session_config = lease.session_config
-        workdir = session_config.workdir or lease.item.workdir or lease.item.id
+        workdir = str(git_cache_dir(session_config.workdir)) if session_config.workdir else lease.item.id
 
         async with limiter:
             lock = self._workdir_locks.get(workdir)

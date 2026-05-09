@@ -72,7 +72,7 @@ class InProcessApiClient:
 
 
 @pytest.mark.anyio
-async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_settings, tmp_path):
+async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_settings):
     orch_db.upsert_agent(
         AgentUpsertRequest(
             id="mock-test-agent",
@@ -80,7 +80,6 @@ async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_set
             nickname="TestAgent",
             prompt="You are a test agent",
             vendor="mock",
-            workdir=str(tmp_path / "workdir"),
             model="mock-model-1",
         ),
     )
@@ -118,7 +117,7 @@ async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_set
 
 
 @pytest.mark.anyio
-async def test_tui_like_enqueue_and_worker_execution_failure(orch_db, webapi_settings, tmp_path):
+async def test_tui_like_enqueue_and_worker_execution_failure(orch_db, webapi_settings):
     orch_db.upsert_agent(
         AgentUpsertRequest(
             id="mock-test-agent",
@@ -126,7 +125,6 @@ async def test_tui_like_enqueue_and_worker_execution_failure(orch_db, webapi_set
             nickname="TestAgent",
             prompt="You are a test agent",
             vendor="mock",
-            workdir=str(tmp_path / "workdir"),
             model="mock-model-1",
         ),
     )

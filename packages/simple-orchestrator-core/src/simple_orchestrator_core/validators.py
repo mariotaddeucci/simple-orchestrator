@@ -23,6 +23,10 @@ MAX_DESCRIPTION_LENGTH: int = 200
 MAX_WORKDIR_LENGTH: int = 4_096
 MAX_NOTE_LENGTH: int = 10_000
 
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\\\/]")
+_GIT_REMOTE_URL_RE = re.compile(r"^(?:https?|ssh|git)://\S+$", re.IGNORECASE)
+_GIT_REMOTE_SCP_RE = re.compile(r"^(?:\S+@)?[^\s:]+:[^\s]+$")
+
 
 def _check_ulid(v: str) -> str:
     if not _ULID_RE.match(v):
@@ -63,15 +67,51 @@ def _check_dep_ref(v: str) -> str:
 
 def _check_workdir(v: str | None) -> str | None:
     if v is None:
-        return v
+        return None
+    return _check_workdir_str(v)
+
+
+def _check_workdir_str(v: str) -> str:
+    v = v.strip()
+    _check_workdir_basic(v)
+    _check_workdir_is_git_remote(v)
+    _check_workdir_no_traversal(v)
+    return v
+
+
+def _check_workdir_basic(v: str) -> None:
+    if not v:
+        raise ValueError("must not be empty")
     if "\x00" in v:
         raise ValueError("must not contain null bytes")
     if len(v) > MAX_WORKDIR_LENGTH:
         raise ValueError(f"must not exceed {MAX_WORKDIR_LENGTH} characters")
-    parts = re.split(r"[/\\\\]", v)
-    if ".." in parts:
-        raise ValueError("must not contain path traversal sequences (..)")
-    return v
+
+
+def _check_workdir_is_git_remote(v: str) -> None:
+    # Workdir is not a local path anymore: only a git remote URL.
+    if _looks_like_local_path(v):
+        raise ValueError("must be a git remote URL (local paths are not allowed)")
+    if not _looks_like_git_remote(v):
+        raise ValueError("must be a git remote URL (e.g. https://... or git@host:org/repo.git)")
+
+
+def _check_workdir_no_traversal(v: str) -> None:
+    # Disallow obvious traversal-like segments even in URLs.
+    if _contains_path_traversal_segment(v):
+        raise ValueError("must not contain path traversal segments (..)")
+
+
+def _looks_like_local_path(v: str) -> bool:
+    return v.startswith(("/", "./", "../", "~")) or bool(_WINDOWS_DRIVE_RE.match(v))
+
+
+def _looks_like_git_remote(v: str) -> bool:
+    return bool(_GIT_REMOTE_URL_RE.match(v) or _GIT_REMOTE_SCP_RE.match(v))
+
+
+def _contains_path_traversal_segment(v: str) -> bool:
+    return ".." in re.split(r"[/\\\\:]", v)
 
 
 ValidULID = Annotated[str, AfterValidator(_check_ulid)]

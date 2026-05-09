@@ -9,6 +9,7 @@ from ulid import ULID
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
 from simple_orchestrator_worker.session_store import SessionStore
+from simple_orchestrator_worker.workdir import resolve_workdir
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -44,7 +45,8 @@ class BaseVendor(ABC):
         Compatible with both asyncio and trio backends via anyio.
         """
         session_id = session_id or str(ULID())
-        workdir = config.workdir or tempfile.mkdtemp()
+        resolved = await anyio.to_thread.run_sync(lambda: resolve_workdir(config.workdir))
+        workdir = resolved or tempfile.mkdtemp()
         if workdir != config.workdir:
             config = config.model_copy(update={"workdir": workdir})
 

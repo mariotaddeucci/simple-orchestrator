@@ -52,7 +52,7 @@ Vendor-specific code stays in `vendors/` — never spread vendor details into `w
 ## Concurrency rules
 
 - `max_active_sessions` caps how many vendor sessions run in parallel.
-- Sessions on the same `workdir` are serialized (one at a time per directory) to avoid conflicts.
+- Sessions are serialized per resolved workdir (git remote → cached clone dir; null → per-task temp dir) to avoid conflicts.
 - Cancellation is best-effort via `_vendor_kill(session_id)`.
 
 ## Testing
