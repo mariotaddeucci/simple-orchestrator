@@ -6,6 +6,11 @@ from simple_orchestrator_core.api import (
     AgentUpsertRequest,
     EnqueueRequest,
     EnqueueResponse,
+    EventCreateRequest,
+    EventListResponse,
+    EventUpdateRequest,
+    McpCreateRequest,
+    McpListResponse,
     QueueDequeueResponse,
     QueueListResponse,
     QueueUpdateRequest,
@@ -15,6 +20,8 @@ from simple_orchestrator_core.api import (
     auth_headers,
 )
 from simple_orchestrator_core.models.agent_record import AgentRecord
+from simple_orchestrator_core.models.event_record import EventRecord
+from simple_orchestrator_core.models.mcp_record import McpRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionRecord
 from simple_orchestrator_core.models.worker_heartbeat import HealthResponse, WorkerHeartbeat
@@ -155,3 +162,73 @@ class OrchestratorApiClient(BaseNodeWorker):
         async with self._client() as client:
             r = await client.patch(f"/sessions/{session_id}", json=req.model_dump(exclude_none=True))
             r.raise_for_status()
+
+    # ── mcps ─────────────────────────────────────────────────────────────────
+
+    async def list_mcps(self, *, is_global: bool | None = None, enabled: bool | None = None) -> list[McpRecord]:
+        params: dict[str, str] = {}
+        if is_global is not None:
+            params["is_global"] = str(is_global).lower()
+        if enabled is not None:
+            params["enabled"] = str(enabled).lower()
+        async with self._client() as client:
+            r = await client.get("/mcps", params=params)
+            r.raise_for_status()
+            return McpListResponse.model_validate(r.json()).mcps
+
+    async def get_mcp(self, mcp_id: str) -> McpRecord:
+        async with self._client() as client:
+            r = await client.get(f"/mcps/{mcp_id}")
+            r.raise_for_status()
+            return McpRecord.model_validate(r.json())
+
+    async def upsert_mcp(self, req: McpCreateRequest) -> McpRecord:
+        async with self._client() as client:
+            r = await client.post("/mcps", json=req.model_dump())
+            r.raise_for_status()
+            return McpRecord.model_validate(r.json())
+
+    async def delete_mcp(self, mcp_id: str) -> None:
+        async with self._client() as client:
+            r = await client.delete(f"/mcps/{mcp_id}")
+            r.raise_for_status()
+
+    # ── events ────────────────────────────────────────────────────────────────
+
+    async def list_events(self, *, enabled: bool | None = None) -> list[EventRecord]:
+        params: dict[str, str] = {}
+        if enabled is not None:
+            params["enabled"] = str(enabled).lower()
+        async with self._client() as client:
+            r = await client.get("/events", params=params)
+            r.raise_for_status()
+            return EventListResponse.model_validate(r.json()).events
+
+    async def get_event(self, event_id: str) -> EventRecord:
+        async with self._client() as client:
+            r = await client.get(f"/events/{event_id}")
+            r.raise_for_status()
+            return EventRecord.model_validate(r.json())
+
+    async def create_event(self, req: EventCreateRequest) -> EventRecord:
+        async with self._client() as client:
+            r = await client.post("/events", json=req.model_dump())
+            r.raise_for_status()
+            return EventRecord.model_validate(r.json())
+
+    async def update_event(self, event_id: str, req: EventUpdateRequest) -> EventRecord:
+        async with self._client() as client:
+            r = await client.patch(f"/events/{event_id}", json=req.model_dump(exclude_none=True))
+            r.raise_for_status()
+            return EventRecord.model_validate(r.json())
+
+    async def delete_event(self, event_id: str) -> None:
+        async with self._client() as client:
+            r = await client.delete(f"/events/{event_id}")
+            r.raise_for_status()
+
+    async def trigger_event(self, event_id: str) -> QueueItem:
+        async with self._client() as client:
+            r = await client.post(f"/events/{event_id}/trigger")
+            r.raise_for_status()
+            return EnqueueResponse.model_validate(r.json()).item
