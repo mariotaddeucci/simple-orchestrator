@@ -1,203 +1,73 @@
-# CLAUDE.md
+# CLAUDE.md (root)
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guia do repositório para agentes (Claude Code / Codex CLI).
 
-## Commands
+Este arquivo é **conceitual e curto**. Detalhes práticos ficam no `CLAUDE.md` de cada pacote.
+Observação: `AGENTS.md` na raiz é um symlink para este arquivo.
 
-All commands use `uv` — never activate the venv manually.
+## Objetivo
 
-```bash
-uv run python -c "..."          # run inline Python
-uv run python <script>.py       # run Python scripts
-uv add <package>                # add dependency
-uv sync --frozen                # sync venv strictly from lock file (reproducible)
-uv sync                         # update lockfile and sync (use when adding packages)
-```
+- Orquestrar execução assíncrona de agentes IA em background (multi-vendor).
+- Persistir fila/sessões/memória em SQLite.
+- Rodar em **standalone** (SQLite direto) ou **distribuído** (WebAPI + API client).
 
-### Running the system
+## Princípios de arquitetura
 
-```bash
-uv run simple-orchestrator worker    # start worker (queue runner + FastAPI on :8765)
-uv run simple-orchestrator webapi    # start webapi only (no queue runner)
-uv run simple-orchestrator-tui       # launch Textual terminal UI (REST client)
-```
+- `simple-orchestrator-core` é o **contrato**: modelos Pydantic, Protocols e shapes de API.
+- Todo o resto depende de `core` (não o inverso).
+- `database` implementa `IOrchestratorRepository` (SQLite) e é usado por `webapi`.
+- `api-client` implementa o mesmo repositório via HTTP para manter o consumo idêntico.
+- `worker` contém execução e vendors; `tui` é cliente do repositório (DB direto ou HTTP).
 
-### Documentation lookup (Context7)
+## Como trabalhar (comandos)
 
-```bash
-ctx7 get <library-name>         # fetch docs for a library (e.g. ctx7 get sqlmodel)
-ctx7 search <query>             # search across libraries
-```
-
-Prefer `ctx7 get` over assumptions when working with third-party APIs (`sqlmodel`, `claude-agent-sdk`, `pydantic`, `ruff`, etc.).
-
-### Code quality
+Use sempre `uv` (não ative venv manualmente):
 
 ```bash
-uv run ruff check .             # lint (all rules: pyflakes, isort, security, bugbear…)
-uv run ruff check --fix .       # lint + auto-fix
-uv run ruff format .            # format code
-uv run pyrefly check            # static type checking
+uv sync --frozen
+uv run ruff check .
+uv run ruff format .
+uv run pyrefly check
 ```
 
-### Tests
-
-Each package has its own pytest config. Run per-package with `--package`:
+Rodar o sistema:
 
 ```bash
-# Run all tests for a package
-uv run --package simple-orchestrator-core    pytest packages/simple-orchestrator-core/
-uv run --package simple-orchestrator-worker  pytest packages/simple-orchestrator-worker/
-uv run --package simple-orchestrator-webapi  pytest packages/simple-orchestrator-webapi/
-
-# Run a single test file
-uv run --package simple-orchestrator-webapi  pytest packages/simple-orchestrator-webapi/tests/test_orchestrator_db.py
-
-# Run a single test by name
-uv run --package simple-orchestrator-core    pytest packages/simple-orchestrator-core/ -k test_parse_vendor_model
-
-# Integration tests (require live vendor auth)
-uv run --package simple-orchestrator-worker  pytest packages/simple-orchestrator-worker/ -m integration
-uv run --package simple-orchestrator-worker  pytest packages/simple-orchestrator-worker/ -m "integration and copilot"
+uv run simple-orchestrator worker
+uv run simple-orchestrator webapi
+uv run simple-orchestrator-tui
 ```
 
-Integration tests require live vendor auth (copilot logged in, claude CLI authenticated, opencode running). They are auto-skipped in CI.
-
-### Git hooks (prek)
+Testes rodam por pacote (cada um tem seu `pyproject.toml`):
 
 ```bash
-uv run prek install             # install commit hooks (run once per clone)
-uv run prek run --all-files     # run all hooks on every file manually
+uv run --package simple-orchestrator-core       pytest packages/simple-orchestrator-core/
+uv run --package simple-orchestrator-api-client pytest packages/simple-orchestrator-api-client/
+uv run --package simple-orchestrator-webapi     pytest packages/simple-orchestrator-webapi/
+uv run --package simple-orchestrator-worker     pytest packages/simple-orchestrator-worker/
 ```
 
----
+## Índice de pacotes (onde mexer)
 
-## Architecture
+Veja também o `CLAUDE.md` dentro de cada pasta em `packages/`:
 
-UV workspace with 7 packages. Multi-vendor async agent orchestrator supporting Claude Code (`claude_agent_sdk`), OpenCode (`opencode_ai`), and GitHub Copilot (`copilot`).
-
-### Execution modes
-
-The system supports two modes, governed by which implementation of `IOrchestratorRepository` is injected:
-
-**Standalone** — TUI and worker connect directly to SQLite via `simple-orchestrator-database`. No REST API needed.
-
-**Distributed** — TUI and worker talk to a `simple-orchestrator-webapi` instance over HTTP. The HTTP client (`simple-orchestrator-api-client`) implements the same interfaces, so consumer code is unchanged.
-
-```
-Standalone:
-  TUI / Worker → OrchestratorDB (simple-orchestrator-database) → SQLite
-
-Distributed:
-  TUI / Worker → ApiClient (simple-orchestrator-api-client) → WebAPI → OrchestratorDB → SQLite
-```
-
-### Workspace packages
-
-| Package | Module | Role |
+| Pacote | Para quê existe | Onde desenvolver / o que fazer |
 |---|---|---|
-| `simple-orchestrator` | `simple_orchestrator` | CLI dispatch: `worker`, `webapi` subcommands |
-| `simple-orchestrator-core` | `simple_orchestrator_core` | Pydantic models, Protocols (interfaces), settings, validators |
-| `simple-orchestrator-database` | `simple_orchestrator_database` | SQLite persistence; implements `IOrchestratorRepository` |
-| `simple-orchestrator-webapi` | `simple_orchestrator_webapi` | FastAPI REST server; delegates all DB access to `simple-orchestrator-database` |
-| `simple-orchestrator-worker` | `simple_orchestrator_worker` | Queue runner + vendor implementations |
-| `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | HTTP client; implements `IOrchestratorRepository` via REST |
-| `simple-orchestrator-tui` | `simple_orchestrator_tui` | Textual terminal UI; consumes `IOrchestratorRepository` |
+| `packages/simple-orchestrator-core/` | Contrato (modelos, settings, Protocols, shapes da API) | Evoluir schemas/validação e manter compatibilidade entre `webapi` e `api-client`. |
+| `packages/simple-orchestrator-database/` | Persistência SQLite (implementação do repositório) | Alterar consultas/retention/locking/migrations; garantir atomicidade e compatibilidade. |
+| `packages/simple-orchestrator-webapi/` | FastAPI REST server | Expor endpoints finos; delegar persistência ao `database`; não duplicar regras de negócio. |
+| `packages/simple-orchestrator-api-client/` | Cliente HTTP que implementa o repositório | Manter paridade com `webapi` + `core/api.py`; mapear erros/timeout/retries. |
+| `packages/simple-orchestrator-worker/` | Runner da fila + vendors | Concorrência, cancelamento, timeouts, logs; integração com vendors (Claude/OpenCode/Copilot). |
+| `packages/simple-orchestrator-tui/` | Interface terminal (Textual) | UX e fluxos; consumir apenas o repositório (DB direto ou HTTP). |
+| `packages/simple-orchestrator/` | CLI/entrypoints do sistema | Subcomandos (`worker`, `webapi`), wiring de settings e DI. |
 
-All source lives under `packages/<package-name>/src/<module_name>/`.
+## Mudanças de conceito (manutenção do guia)
 
----
+Se, durante o trabalho, você identificar **um novo conceito**, **um novo fundamento** ou **uma regra que se repete**:
 
-## Core package — the contract layer
-
-`simple-orchestrator-core` is the only package imported by all others. It defines:
-
-### Repository interfaces (`interfaces.py`)
-
-Five `typing.Protocol` classes, combined into one:
-
-```
-IOrchestratorRepository
-  ├── IAgentRepository     — agents CRUD (list/get/upsert/delete)
-  ├── IQueueRepository     — queue ops (enqueue/dequeue/update/cancel/cleanup)
-  ├── ISessionRepository   — session lifecycle (save/update_status/get/list)
-  ├── IMemoryRepository    — per-agent memory (save/get/delete/list)
-  └── IWorkerRepository    — heartbeat ops (upsert/list_alive)
-```
-
-Any code that reads or writes data must type-annotate against these Protocols, never against a concrete class. This is what enables swapping SQLite for HTTP at injection time.
-
-### Pydantic models (`models/`)
-
-All Pydantic v2 (or SQLModel where persistence is needed). Key models:
-
-| Model | Purpose |
-|---|---|
-| `SessionConfig` | Full session input: prompt, model, workdir, mcp_servers, skills, agents, subagents, env, max_turns, permission_mode |
-| `SessionRecord` | Persisted session row: id (ULID), vendor, prompt, workdir, started_at, status, ended_at, vendor_session_id |
-| `QueueItem` | Queue row: id, agent_id, prompt, workdir, status, session_id, depends_on, note |
-| `AgentRecord` | Persisted agent definition: id, name, vendor, model, workdir, prompt, mcp_servers, skills |
-| `McpConfig` | Discriminated union on `type`: `McpStdioConfig | McpSseConfig | McpHttpConfig` |
-| `WorkerHeartbeat` | Heartbeat payload (ULID id, type, name) |
-| `ModelInfo` | Returned by `list_models()`: id, name, vendor |
-
-`SessionConfig.agents` = foreground agents. `SessionConfig.subagents` = background agents. Claude Code merges both into `ClaudeAgentOptions.agents`.
-
-### API request/response models (`api.py`)
-
-`EnqueueRequest`, `EnqueueResponse`, `QueueUpdateRequest`, `QueueDequeueResponse`, `AgentUpsertRequest`, `SessionUpdateRequest`, etc. These are the Pydantic shapes for both the REST endpoints and the HTTP client. Defining them in `core` means both sides share the exact same validation.
-
-### Validators (`validators.py`)
-
-`ValidULID`, `ValidAgentId`, `ValidAlias`, `ValidDepRef`, `ValidWorkdir` — all `Annotated` types with `AfterValidator`. Applied to model fields at declaration; validation runs automatically on construction. `ValidWorkdir` blocks null bytes and path traversal.
-
-### Settings (`settings.py`)
-
-`WebApiSettings`, `WorkerSettings`, `TuiSettings` — all `pydantic_settings.BaseSettings`. Load from `orchestrator.toml`, then `pyproject.toml [tool.simple-orchestrator]`, then env vars (`ORCHESTRATOR_*` prefix). `AgentSettings` lives inside `[agents.<id>]`; prompt is either inline or `prompt_file = "path"`.
-
----
-
-## Database package (`simple-orchestrator-database`)
-
-Single class `OrchestratorDB` in `repository.py`. Implements `IOrchestratorRepository` structurally (no explicit `class OrchestratorDB(IOrchestratorRepository)` — structural Protocol conformance is checked by the type checker).
-
-- Uses SQLModel (SQLAlchemy sync) + SQLite. `build_engine()` in `engine.py` runs `SQLModel.metadata.create_all` on startup.
-- All models imported at engine build time to register SQLAlchemy metadata (`agent_record`, `queue_item`, `session`, `memory_record`, `worker_heartbeat_record`).
-- Context manager (`__enter__`/`__exit__`) and explicit `connect()`/`close()` both supported.
-- `_resolve_workdir()` — `None` → `tempfile.mkdtemp()`; existing dir → tries `git rev-parse --show-toplevel`; else as-is.
-- `dequeue_next()` uses optimistic locking: fetches pending rows, then `UPDATE … WHERE status='pending'` to claim one atomically. Handles `depends_on` chains: auto-fails blocked items when a dependency fails/is cancelled/is missing.
-
-**Retention:** `cleanup_old_completed_items(max_items, max_age_days)` — keeps at most `max_items` most recent completed queue items and drops anything older than `max_age_days`. Called by the worker after each task completes.
-
-The webapi's `db/` subdirectory is now a thin re-export shim (`from simple_orchestrator_database import OrchestratorDB`). Real implementation lives in the database package.
-
----
-
-## Worker package (`simple-orchestrator-worker`)
-
-### Vendor polymorphism (`vendors/base.py`)
-
-`BaseVendor` ABC. All vendors override:
-- `vendor_name: str` — property
-- `_run_session(session_id, config)` — background task body
-- `_vendor_kill(session_id)` — native abort/disconnect
-- `execute_session(config)` — `AsyncIterator` for direct streaming (no DB)
-- `list_models()` — available `ModelInfo` list
-
-Concrete methods on `BaseVendor` (not overridden):
-- `run(config) -> str` — generates ULID, saves `SessionRecord(status="running")`, spawns `asyncio.Task`, returns immediately
-- `kill(session_id)` — cancels task, calls `_vendor_kill`, sets `status="killed"`
-- `wait(session_id)` — blocks until session completes, returns `SessionRecord`
-
-### Queue runner (`worker_runner.py`)
-
-`QueueRunner` polls the DB and dispatches items with bounded parallelism:
-- At most `settings.max_active_sessions` concurrent items (asyncio semaphore)
-- Items sharing `workdir` are serialised (per-dir `asyncio.Lock`)
-- `depends_on` delays items until referenced IDs reach `completed`
-- `start()` / `stop()` for background loop; `run_until_empty()` for one-shot drain
-
-Agent definitions come from `settings.agents` (`orchestrator.toml`) — versionable, checked into git. Global `mcp_servers` and `skills` merge with per-agent ones in `_build_session_config()`.
+1. Traga junto na resposta uma sugestão objetiva do que acrescentar no `CLAUDE.md` apropriado (raiz ou pacote).
+2. Se for cross-cutting (afeta vários pacotes), inclua no `CLAUDE.md` da raiz e referencie o pacote.
+3. Se for específico de um pacote, atualize apenas o `packages/<pacote>/CLAUDE.md`.
 
 ### Worker heartbeats
 
