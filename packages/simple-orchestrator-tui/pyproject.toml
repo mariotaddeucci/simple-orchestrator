@@ -10,6 +10,16 @@ dependencies = [
     "textual>=3.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "simple-orchestrator-database",
+    "simple-orchestrator-worker",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [project.scripts]
 simple-orchestrator-tui = "simple_orchestrator_tui:main"
 
