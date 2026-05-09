@@ -1,23 +1,24 @@
-# CLAUDE.md — `simple-orchestrator-worker` (fila + vendors)
+# CLAUDE.md — `simple-orchestrator-worker` (queue runner + vendors)
 
-Escopo: `packages/simple-orchestrator-worker/`.
+Scope: `packages/simple-orchestrator-worker/`.
 
-## Por que existe
+## Why it exists
 
-- Rodar a fila (dequeue/dispatch) com paralelismo controlado.
-- Implementar vendors (Claude Code, OpenCode, GitHub Copilot) e o ciclo de vida de sessões.
+- Run the queue (dequeue/dispatch) with controlled parallelism.
+- Implement vendors (Claude Code, OpenCode, GitHub Copilot) and the session lifecycle.
+- Run the event scheduler loop that fires due events and updates `next_run`.
 
-## Objetivo principal
+## Main goal
 
-- Execução robusta: concorrência, serialização por `workdir`, cancelamento, timeouts e logs.
+- Robust execution: concurrency, `workdir` serialization, cancellation, timeouts, and logs.
 
-## Como será desenvolvido
+## Development guidelines
 
-- Código vendor-specific fica em `vendors/`; evitar espalhar detalhes de vendor pelo runner.
-- Integração com WebAPI (heartbeat, dequeue) deve manter shapes do `core`.
-- Testes de integração que dependem de autenticação real devem ser marcados/auto-skipados em CI.
+- Vendor-specific code lives in `vendors/`; do not spread vendor details into the runner.
+- Integration with WebAPI (heartbeat, dequeue) must keep `core` shapes.
+- Integration tests that depend on real vendor auth must be marked/auto-skipped in CI.
 
-## Validação rápida
+## Quick validation
 
 ```bash
 uv run --package simple-orchestrator-worker pytest packages/simple-orchestrator-worker/

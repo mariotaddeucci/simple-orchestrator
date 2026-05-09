@@ -1,21 +1,21 @@
 # CLAUDE.md — `simple-orchestrator-tui` (Textual UI)
 
-Escopo: `packages/simple-orchestrator-tui/`.
+Scope: `packages/simple-orchestrator-tui/`.
 
-## Por que existe
+## Why it exists
 
-- Interface terminal para enfileirar/monitorar sessões.
-- Consumir o repositório (SQLite direto ou HTTP via `api-client`) sem acoplamento a implementações.
+- Terminal interface for queueing and monitoring sessions.
+- Consume the repository without coupling to implementations.
 
-## Objetivo principal
+## Main goal
 
-- UX previsível e estável; manter a TUI como cliente (sem regras de persistência aqui).
+- Predictable and stable UX; keep the TUI as a consumer (no persistence logic here).
 
-## Como será desenvolvido
+## Development guidelines
 
-- Evitar dependência direta em `database`/SQL; usar o repositório injetado.
-- Mudanças de fluxo devem ser validadas rodando a TUI contra o modo escolhido.
+- Avoid direct dependency on `database`/SQL; use the injected repository.
+- Flow changes must be validated by running the TUI against the chosen mode.
 
-## Validação rápida
+## Quick validation
 
-Este pacote tende a ser validado via execução manual da TUI; quando houver testes, preferir rodá-los por pacote.
+This package is normally validated via manual TUI execution; when tests exist, prefer running them per package.

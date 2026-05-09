@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from typing import Literal
 
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel
@@ -14,7 +13,7 @@ class EventRecord(SQLModel, table=True):
     prompt: str
     workdir: str | None = None
 
-    schedule_type: Literal["interval", "cron"]
+    schedule_type: str  # "interval" | "cron" — validated at API layer
     interval_minutes: float | None = None
     cron_expression: str | None = None
 

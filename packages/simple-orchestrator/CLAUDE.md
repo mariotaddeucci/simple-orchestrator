@@ -1,22 +1,22 @@
 # CLAUDE.md — `simple-orchestrator` (CLI / wiring)
 
-Escopo: `packages/simple-orchestrator/` (este guia é usado via `AGENTS.md` → symlink).
+Scope: `packages/simple-orchestrator/`.
 
-## Por que existe
+## Why it exists
 
-- Fornecer entrypoints/CLI para iniciar `worker` e `webapi`.
-- Centralizar o “wiring” (settings + DI) sem acoplar consumidores a implementações concretas.
+- Provide CLI entrypoints to start `worker`, `webapi`, and `tui`.
+- Centralize wiring (settings + DI) without coupling consumers to concrete implementations.
 
-## Objetivo principal
+## Main goal
 
-- Garantir que executar via CLI configure corretamente: settings, repositório (SQLite direto ou HTTP) e logging.
+- Ensure running via CLI correctly configures: settings, repository (direct SQLite or HTTP), and logging.
 
-## Como será desenvolvido
+## Development guidelines
 
-- Manter subcomandos simples (parse/dispatch) e empurrar regras de negócio para os pacotes especializados.
-- Alterações aqui geralmente implicam documentação de CLI e validação end-to-end com comandos de execução.
+- Keep subcommands simple (parse/dispatch) and push business rules to specialized packages.
+- Changes here generally require CLI documentation updates and end-to-end validation.
 
-## Validação rápida
+## Quick validation
 
 ```bash
 uv run ruff check packages/simple-orchestrator/

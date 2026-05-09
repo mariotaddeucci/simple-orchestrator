@@ -52,7 +52,8 @@ class InProcessApiClient:
             return None
         agent = self._db.get_agent(item.agent_id)
         assert agent is not None
-        session_config = build_session_config(settings=self._settings, agent=agent, item=item)
+        global_mcps = self._db.list_mcps(is_global=True, enabled=True)
+        session_config = build_session_config(agent=agent, item=item, global_mcps=global_mcps)
         return QueueDequeueResponse(
             item=item,
             vendor=agent.vendor,

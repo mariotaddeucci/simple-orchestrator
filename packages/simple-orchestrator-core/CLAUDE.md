@@ -1,30 +1,32 @@
-# CLAUDE.md — `simple-orchestrator-core` (contrato)
+# CLAUDE.md — `simple-orchestrator-core` (contract)
 
-Escopo: `packages/simple-orchestrator-core/`.
+Scope: `packages/simple-orchestrator-core/`.
 
-## Por que existe
+## Why it exists
 
-- Ser a camada **compartilhada** por todos os outros pacotes.
-- Definir contratos estáveis: modelos Pydantic, settings, validators e Protocols (`IOrchestratorRepository`).
+- Be the **shared layer** imported by all other packages.
+- Define stable contracts: Pydantic models, settings, validators, and Protocols (`IOrchestratorRepository`).
 
-## Objetivo principal
+## Main goal
 
-- Evoluir schemas com cuidado: mudanças aqui afetam `database`, `webapi`, `api-client`, `worker` e `tui`.
+- Evolve schemas carefully: changes here affect `database`, `webapi`, `api-client`, `worker`, and `tui`.
 
-## Como será desenvolvido
+## Development guidelines
 
-- Preferir compatibilidade retroativa (ex.: coercions/validators para schemas legados).
-- Shapes de API ficam em `core` para `webapi` e `api-client` validarem de forma idêntica.
-- Protocols devem ser o tipo usado por consumidores (não implementar dependência em classes concretas).
+- Prefer backwards compatibility (e.g., coercions/validators for legacy schemas).
+- API shapes live in `core` so `webapi` and `api-client` validate identically.
+- Protocols must be the type used by consumers (do not couple to concrete classes).
+- `Literal` types must NOT be used as SQLModel table field types — use `str` and validate at the API layer.
 
-## Onde mexer
+## Where to make changes
 
-- `src/simple_orchestrator_core/interfaces.py`: Protocols do repositório.
-- `src/simple_orchestrator_core/models/`: modelos de domínio.
-- `src/simple_orchestrator_core/api.py`: request/response da REST API.
-- `src/simple_orchestrator_core/settings.py` e `validators.py`: carregamento e validação.
+- `src/simple_orchestrator_core/interfaces.py`: repository Protocols.
+- `src/simple_orchestrator_core/models/`: domain models.
+- `src/simple_orchestrator_core/api.py`: REST API request/response shapes.
+- `src/simple_orchestrator_core/schedule.py`: `compute_next_run()` for interval/cron scheduling.
+- `src/simple_orchestrator_core/settings.py` and `validators.py`: settings loading and validation.
 
-## Validação rápida
+## Quick validation
 
 ```bash
 uv run --package simple-orchestrator-core pytest packages/simple-orchestrator-core/

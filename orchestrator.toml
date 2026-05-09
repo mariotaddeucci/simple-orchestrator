@@ -1,5 +1,5 @@
-# orchestrator.toml — parâmetros de infraestrutura.
-# Agentes, MCPs e eventos são gerenciados pela API REST (POST /agents, /mcps, /events).
+# orchestrator.toml — infrastructure parameters only.
+# Agents, MCPs, and events are managed via the REST API (POST /agents, /mcps, /events).
 # Override which file to load: ORCHESTRATOR_TOML_FILE=/path/to/other.toml
 
 db_path             = "orchestrator.db"

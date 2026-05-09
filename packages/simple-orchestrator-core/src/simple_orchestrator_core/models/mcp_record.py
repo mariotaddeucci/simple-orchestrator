@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from typing import Literal
 
 from pydantic import field_validator
 from sqlalchemy import Column
@@ -12,7 +11,7 @@ class McpRecord(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     name: str
-    type: Literal["stdio", "sse", "http"]
+    type: str  # "stdio" | "sse" | "http" — validated at API layer
 
     # stdio
     command: str | None = None

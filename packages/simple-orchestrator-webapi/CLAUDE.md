@@ -1,22 +1,23 @@
 # CLAUDE.md — `simple-orchestrator-webapi` (REST API)
 
-Escopo: `packages/simple-orchestrator-webapi/`.
+Scope: `packages/simple-orchestrator-webapi/`.
 
-## Por que existe
+## Why it exists
 
-- Expor o `IOrchestratorRepository` via REST (FastAPI) para modo distribuído.
-- Ser um thin-layer: validação e roteamento; persistência delegada para `database`.
+- Expose `IOrchestratorRepository` via REST (FastAPI) for distributed mode.
+- Be a thin layer: validation and routing; persistence delegated to `database`.
 
-## Objetivo principal
+## Main goal
 
-- Manter paridade com `simple-orchestrator-core/src/.../api.py` e com `api-client`.
+- Keep parity with `simple-orchestrator-core/src/.../api.py` and `api-client`.
 
-## Como será desenvolvido
+## Development guidelines
 
-- Endpoints devem trabalhar com os modelos do `core` (request/response).
-- Evitar duplicar regras que já existem no repositório SQLite.
+- Endpoints must use `core` models for request/response.
+- Do not duplicate rules already enforced by the SQLite repository.
+- `session_config_builder` fetches global MCPs from the DB (not from settings).
 
-## Validação rápida
+## Quick validation
 
 ```bash
 uv run --package simple-orchestrator-webapi pytest packages/simple-orchestrator-webapi/

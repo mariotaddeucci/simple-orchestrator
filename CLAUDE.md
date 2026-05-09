@@ -1,27 +1,28 @@
 # CLAUDE.md (root)
 
-Guia do repositório para agentes (Claude Code / Codex CLI).
+Repository guide for agents (Claude Code / Codex CLI).
 
-Este arquivo é **conceitual e curto**. Detalhes práticos ficam no `CLAUDE.md` de cada pacote.
-Observação: `AGENTS.md` na raiz é um symlink para este arquivo.
+This file is **conceptual and brief**. Practical details live in each package's `CLAUDE.md`.
+Note: `AGENTS.md` at the root is a symlink to this file.
 
-## Objetivo
+## Goals
 
-- Orquestrar execução assíncrona de agentes IA em background (multi-vendor).
-- Persistir fila/sessões/memória em SQLite.
-- Rodar em **standalone** (SQLite direto) ou **distribuído** (WebAPI + API client).
+- Orchestrate async execution of AI agents in background (multi-vendor).
+- Persist queue/sessions/memory in SQLite.
+- Run in **standalone** mode (SQLite direct) or **distributed** mode (WebAPI + API client).
 
-## Princípios de arquitetura
+## Architecture principles
 
-- `simple-orchestrator-core` é o **contrato**: modelos Pydantic, Protocols e shapes de API.
-- Todo o resto depende de `core` (não o inverso).
-- `database` implementa `IOrchestratorRepository` (SQLite) e é usado por `webapi`.
-- `api-client` implementa o mesmo repositório via HTTP para manter o consumo idêntico.
-- `worker` contém execução e vendors; `tui` é cliente do repositório (DB direto ou HTTP).
+- `simple-orchestrator-core` is the **contract**: Pydantic models, Protocols, and API shapes.
+- Everything else depends on `core` (not the inverse).
+- `database` implements `IOrchestratorRepository` (SQLite) and is used by `webapi`.
+- `api-client` implements the same repository via HTTP to keep consumers identical.
+- `worker` handles execution and vendors; `tui` is a repository consumer (direct DB or HTTP).
+- Agents, MCPs, and scheduled events are managed via the REST API — not config files.
 
-## Como trabalhar (comandos)
+## Working commands
 
-Use sempre `uv` (não ative venv manualmente):
+Always use `uv` (do not activate venv manually):
 
 ```bash
 uv sync --frozen
@@ -30,15 +31,15 @@ uv run ruff format .
 uv run pyrefly check
 ```
 
-Rodar o sistema:
+Running the system:
 
 ```bash
+uv run simple-orchestrator tui        # standalone: spawns webapi + worker
 uv run simple-orchestrator worker
 uv run simple-orchestrator webapi
-uv run simple-orchestrator-tui
 ```
 
-Testes rodam por pacote (cada um tem seu `pyproject.toml`):
+Tests run per package (each has its own `pyproject.toml`):
 
 ```bash
 uv run --package simple-orchestrator-core       pytest packages/simple-orchestrator-core/
@@ -47,27 +48,27 @@ uv run --package simple-orchestrator-webapi     pytest packages/simple-orchestra
 uv run --package simple-orchestrator-worker     pytest packages/simple-orchestrator-worker/
 ```
 
-## Índice de pacotes (onde mexer)
+## Package index
 
-Veja também o `CLAUDE.md` dentro de cada pasta em `packages/`:
+See also the `CLAUDE.md` inside each `packages/` subdirectory:
 
-| Pacote | Para quê existe | Onde desenvolver / o que fazer |
+| Package | Purpose | What to work on |
 |---|---|---|
-| `packages/simple-orchestrator-core/` | Contrato (modelos, settings, Protocols, shapes da API) | Evoluir schemas/validação e manter compatibilidade entre `webapi` e `api-client`. |
-| `packages/simple-orchestrator-database/` | Persistência SQLite (implementação do repositório) | Alterar consultas/retention/locking/migrations; garantir atomicidade e compatibilidade. |
-| `packages/simple-orchestrator-webapi/` | FastAPI REST server | Expor endpoints finos; delegar persistência ao `database`; não duplicar regras de negócio. |
-| `packages/simple-orchestrator-api-client/` | Cliente HTTP que implementa o repositório | Manter paridade com `webapi` + `core/api.py`; mapear erros/timeout/retries. |
-| `packages/simple-orchestrator-worker/` | Runner da fila + vendors | Concorrência, cancelamento, timeouts, logs; integração com vendors (Claude/OpenCode/Copilot). |
-| `packages/simple-orchestrator-tui/` | Interface terminal (Textual) | UX e fluxos; consumir apenas o repositório (DB direto ou HTTP). |
-| `packages/simple-orchestrator/` | CLI/entrypoints do sistema | Subcomandos (`worker`, `webapi`), wiring de settings e DI. |
+| `packages/simple-orchestrator-core/` | Contract (models, settings, Protocols, API shapes) | Evolve schemas/validation; maintain compatibility between `webapi` and `api-client`. |
+| `packages/simple-orchestrator-database/` | SQLite persistence (repository implementation) | Edit queries/retention/locking/migrations; ensure atomicity and compatibility. |
+| `packages/simple-orchestrator-webapi/` | FastAPI REST server | Expose thin endpoints; delegate persistence to `database`; do not duplicate business rules. |
+| `packages/simple-orchestrator-api-client/` | HTTP client implementing the repository | Keep parity with `webapi` + `core/api.py`; map errors/timeouts/retries. |
+| `packages/simple-orchestrator-worker/` | Queue runner + vendors + event scheduler | Concurrency, cancellation, timeouts, logs; vendor integration (Claude/OpenCode/Copilot). |
+| `packages/simple-orchestrator-tui/` | Terminal UI (Textual) | UX and flows; consume only the repository (direct DB or HTTP). |
+| `packages/simple-orchestrator/` | CLI / entrypoints | Subcommands (`worker`, `webapi`, `tui`), settings wiring and DI. |
 
-## Mudanças de conceito (manutenção do guia)
+## Concept changes (guide maintenance)
 
-Se, durante o trabalho, você identificar **um novo conceito**, **um novo fundamento** ou **uma regra que se repete**:
+If during work you identify **a new concept**, **a new principle**, or **a recurring rule**:
 
-1. Traga junto na resposta uma sugestão objetiva do que acrescentar no `CLAUDE.md` apropriado (raiz ou pacote).
-2. Se for cross-cutting (afeta vários pacotes), inclua no `CLAUDE.md` da raiz e referencie o pacote.
-3. Se for específico de um pacote, atualize apenas o `packages/<pacote>/CLAUDE.md`.
+1. Include a concrete suggestion for what to add to the appropriate `CLAUDE.md` (root or package).
+2. If cross-cutting (affects multiple packages), add to root `CLAUDE.md` and reference the package.
+3. If package-specific, update only `packages/<package>/CLAUDE.md`.
 
 ### Worker heartbeats
 

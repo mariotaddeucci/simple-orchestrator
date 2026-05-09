@@ -1,25 +1,26 @@
-# CLAUDE.md — `simple-orchestrator-database` (SQLite / repositório)
+# CLAUDE.md — `simple-orchestrator-database` (SQLite / repository)
 
-Escopo: `packages/simple-orchestrator-database/`.
+Scope: `packages/simple-orchestrator-database/`.
 
-## Por que existe
+## Why it exists
 
-- Implementar `IOrchestratorRepository` com SQLite (SQLModel/SQLAlchemy sync).
-- Ser o backend único para o modo standalone e para a `webapi` no modo distribuído.
+- Implement `IOrchestratorRepository` with SQLite (SQLModel/SQLAlchemy sync).
+- Be the single backend for standalone mode and for `webapi` in distributed mode.
 
-## Objetivo principal
+## Main goal
 
-- Persistência correta: atomicidade (claim/dequeue), consistência de status e retenção/cleanup.
+- Correct persistence: atomicity (claim/dequeue), status consistency, and retention/cleanup.
 
-## Como será desenvolvido
+## Development guidelines
 
-- Evitar lógica de HTTP aqui (isso é papel de `webapi` / `api-client`).
-- Mudanças em schema/queries devem acompanhar atualizações em `core` (modelos/validators).
-- Manter comportamento estável para dependências (`depends_on`) e cleanup de itens antigos.
+- No HTTP logic here (that belongs to `webapi` / `api-client`).
+- Schema/query changes must follow updates in `core` (models/validators).
+- Keep stable behavior for dependencies (`depends_on`) and old-item cleanup.
+- Boolean column filters should be done in Python (post-fetch) to avoid SQLModel `Literal` type issues.
 
-## Validação rápida
+## Quick validation
 
-Este pacote normalmente é validado indiretamente pelos testes da `webapi` e do `worker`:
+This package is normally validated indirectly by `webapi` and `worker` tests:
 
 ```bash
 uv run --package simple-orchestrator-webapi pytest packages/simple-orchestrator-webapi/
