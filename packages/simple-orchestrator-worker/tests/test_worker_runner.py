@@ -10,8 +10,8 @@ from simple_orchestrator_core.models.agent_record import AgentRecord
 from simple_orchestrator_core.models.mcp_record import McpRecord
 from simple_orchestrator_core.models.queue_item import QueueItem
 from simple_orchestrator_core.models.session import SessionConfig
+from simple_orchestrator_core.session_config_builder import build_session_config
 from simple_orchestrator_core.settings import WorkerSettings
-from simple_orchestrator_webapi.session_config_builder import build_session_config
 from simple_orchestrator_worker.worker_runner import WorkerRunner
 from ulid import ULID
 

@@ -15,9 +15,9 @@ from simple_orchestrator_core.api import (
     SessionCreateRequest,
     SessionUpdateRequest,
 )
+from simple_orchestrator_core.session_config_builder import build_session_config
 from simple_orchestrator_core.settings import WebApiSettings, WorkerSettings
 from simple_orchestrator_webapi.db.orchestrator import OrchestratorDB
-from simple_orchestrator_webapi.session_config_builder import build_session_config
 from simple_orchestrator_worker.session_store import ApiSessionStore
 from simple_orchestrator_worker.worker_runner import WorkerRunner
 

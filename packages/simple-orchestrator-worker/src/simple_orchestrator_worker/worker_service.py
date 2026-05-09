@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import anyio
-from simple_orchestrator_api_client import OrchestratorApiClient
 from simple_orchestrator_core.settings import WorkerSettings
 
 from .logging_config import get_internal_logger
-from .session_store import ApiSessionStore
+from .session_store import ApiSessionStore, SessionStore
 from .vendors import ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
 from .worker_runner import WorkerRunner
 
 logger = get_internal_logger(__name__)
 
 
-def build_vendors(*, session_store: ApiSessionStore) -> dict[str, object]:
+def build_vendors(*, session_store: SessionStore) -> dict[str, object]:
     return {
         "claude_code": ClaudeCodeVendor(session_store),
         "opencode": OpenCodeVendor(session_store),
@@ -21,6 +20,8 @@ def build_vendors(*, session_store: ApiSessionStore) -> dict[str, object]:
 
 
 async def run_worker_forever(settings: WorkerSettings) -> None:
+    from simple_orchestrator_api_client import OrchestratorApiClient  # noqa: PLC0415
+
     client = OrchestratorApiClient(settings.api_url, api_key=settings.api_key)
     store = ApiSessionStore(client)
     vendors = build_vendors(session_store=store)
