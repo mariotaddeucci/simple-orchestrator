@@ -20,20 +20,22 @@ Ensure CLI invocations correctly configure settings, the repository (SQLite dire
 
 ## CLI subcommands
 
-| Command | What it does |
-|---|---|
-| `simple-orchestrator webapi` | Starts the FastAPI REST server (`webapi_cli.main()`) |
-| `simple-orchestrator worker` | Starts the queue runner against the running webapi (`worker_cli.main()`) |
-| `simple-orchestrator tui` | Standalone TUI + embedded worker (direct DB, no HTTP) |
-| `simple-orchestrator tui --distributed` | Distributed TUI, connects to a running webapi via HTTP |
+| Command | Mode | What it does |
+|---|---|---|
+| `simple-orchestrator standalone` | Standalone | TUI + embedded worker sharing one `OrchestratorDB` directly (no HTTP) |
+| `simple-orchestrator webapi` | Distributed | FastAPI REST server — owns the SQLite DB |
+| `simple-orchestrator worker` | Distributed | Worker process — connects to running webapi via HTTP |
+| `simple-orchestrator tui` | Distributed | TUI only — connects to running webapi via HTTP |
+
+Calling individual services (`webapi`, `worker`, `tui`) is the **distributed** mode — each process is separate and communicates via HTTP. Call `standalone` when you want everything in one process.
 
 Imports are lazy (`_import_or_exit(module, extra)`) so missing optional deps give a clear error at runtime.
 
 ## Standalone mode wiring
 
-`simple-orchestrator tui` (default) creates one `OrchestratorDB` instance and injects it into both `StandaloneClient` (→ `OrchestratorTUI`) and `StandaloneSessionStore` (→ `WorkerRunner`). The `WorkerRunner` runs as a Textual `@work` background worker inside the TUI process — no subprocess, no webapi.
+`standalone` creates one `OrchestratorDB` instance and injects it into both `StandaloneClient` (→ `OrchestratorTUI`) and `StandaloneSessionStore` (→ `WorkerRunner`). The `WorkerRunner` runs as a Textual `@work` background worker inside the TUI process — no subprocess, no webapi needed.
 
-`simple-orchestrator tui --distributed` injects `OrchestratorApiClient(api_url, api_key)` into `OrchestratorTUI` only; a separate `worker` process must be running.
+`tui` (distributed) injects `OrchestratorApiClient(api_url, api_key)` into `OrchestratorTUI`; a separate `webapi` and `worker` must be running.
 
 Both clients satisfy `IOrchestratorClient` — consumers are never typed against a concrete class.
 

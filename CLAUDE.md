@@ -46,8 +46,8 @@ Note: `AGENTS.md` at the root is a symlink to this file.
 ```
 
 **Deployment modes:**
-- **Standalone:** `database` ↔ `worker`/`tui` (direct SQLite, no network)
-- **Distributed:** `webapi` ↔ `database`; `worker`/`tui` ↔ `api-client` ↔ `webapi`
+- **Standalone** (`simple-orchestrator standalone`): TUI + embedded worker share one `OrchestratorDB` directly — no subprocess, no HTTP.
+- **Distributed** (`webapi` + `worker` + `tui` as separate processes): each service connects via HTTP; `webapi` owns the DB.
 
 ## IDs and keys
 
@@ -71,10 +71,13 @@ uv run pyrefly check
 Run the system:
 
 ```bash
-uv run simple-orchestrator tui                 # standalone: TUI + embedded worker, direct SQLite
-uv run simple-orchestrator tui --distributed   # TUI connects to a running webapi via HTTP
-uv run simple-orchestrator worker              # worker process, connects to webapi via HTTP
-uv run simple-orchestrator webapi              # webapi process, owns the SQLite DB
+# Standalone (everything in one process, direct SQLite):
+uv run simple-orchestrator standalone
+
+# Distributed (each service separate, communicates via HTTP):
+uv run simple-orchestrator webapi    # owns the SQLite DB
+uv run simple-orchestrator worker    # connects to webapi via HTTP
+uv run simple-orchestrator tui       # connects to webapi via HTTP
 ```
 
 Tests run per package (each has its own `pyproject.toml`):

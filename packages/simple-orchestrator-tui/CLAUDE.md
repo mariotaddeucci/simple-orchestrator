@@ -32,8 +32,9 @@ Predictable, stable UX; keep the TUI as a pure client (no persistence logic here
 
 ## Development rules
 
-- No direct dependency on `database`/SQL — always go through the injected repository.
-- Flow changes must be validated by running the TUI against the chosen mode (direct DB or HTTP).
+- No direct dependency on `database`/SQL — always go through the injected `IOrchestratorClient`.
+- `simple-orchestrator tui` (distributed) injects `OrchestratorApiClient`; `simple-orchestrator standalone` injects `StandaloneClient`.
+- Flow changes must be validated by running the TUI against both modes.
 - UI state (selected row, filters) is ephemeral — never persist it.
 
 ## Quick validation
