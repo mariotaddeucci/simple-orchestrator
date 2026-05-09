@@ -25,7 +25,7 @@ Ideal para pipelines onde um agente "delegador" precisa distribuir trabalho para
 | **MCP local** | Conecta FastMCP apps diretamente por importlib, sem subprocesso extra. |
 | **Retomada de sessões** | Sessões interrompidas por reinício da aplicação são retomadas automaticamente. |
 | **Memória de agentes** | Agentes podem salvar e recuperar contexto entre execuções via ferramentas MCP. |
-| **TUI** | Interface terminal para inspecionar sessões e filas em tempo real. |
+| **TUI** | Interface terminal para inspecionar filas, logs e conversar com um agente (com tools via MCP). |
 
 ---
 
@@ -81,8 +81,7 @@ url  = "http://127.0.0.1:8765/sse"
 # Definição de agentes
 [agents.reviewer]
 name    = "Code Reviewer"
-vendor  = "claude_code"
-model   = "claude-sonnet-4-6"
+model   = "claude-code/claude-sonnet-4-6"
 workdir = "."
 prompt  = "Você é um revisor de código especialista. Analise as mudanças e liste problemas por: Bugs / Segurança / Performance / Estilo."
 ```
@@ -110,8 +109,7 @@ url  = "http://127.0.0.1:8765/sse"
 
 [tool.simple-orchestrator.agents.reviewer]
 name    = "Code Reviewer"
-vendor  = "claude_code"
-model   = "claude-sonnet-4-6"
+model   = "claude-code/claude-sonnet-4-6"
 workdir = "."
 prompt  = "Você é um revisor de código especialista. Analise as mudanças e liste problemas por: Bugs / Segurança / Performance / Estilo."
 ```
@@ -122,8 +120,7 @@ Para usar um prompt em arquivo markdown:
 ```toml
 [agents.auditor]
 name        = "Security Auditor"
-vendor      = "claude_code"
-model       = "claude-opus-4-7"
+model       = "claude-code/claude-opus-4-7"
 workdir     = "."
 prompt_file = "prompts/security-auditor.md"
 ```
@@ -132,8 +129,7 @@ prompt_file = "prompts/security-auditor.md"
 ```toml
 [tool.simple-orchestrator.agents.auditor]
 name        = "Security Auditor"
-vendor      = "claude_code"
-model       = "claude-opus-4-7"
+model       = "claude-code/claude-opus-4-7"
 workdir     = "."
 prompt_file = "prompts/security-auditor.md"
 ```
@@ -180,8 +176,7 @@ cron     = "0 */6 * * *"
 
 [agents.reviewer]
 name    = "Code Reviewer"
-vendor  = "claude_code"
-model   = "claude-sonnet-4-6"
+model   = "claude-code/claude-sonnet-4-6"
 workdir = "."
 prompt  = """
 Você é um revisor de código especialista. Analise as mudanças recentes no git
@@ -190,22 +185,19 @@ e forneça um relatório estruturado com: Bugs / Segurança / Performance / Esti
 
 [agents.security]
 name    = "Security Auditor"
-vendor  = "claude_code"
-model   = "claude-opus-4-7"
+model   = "claude-code/claude-opus-4-7"
 workdir = "."
 prompt_file = "prompts/security-auditor.md"
 
 [agents.tester]
 name    = "Test Writer"
-vendor  = "claude_code"
-model   = "claude-sonnet-4-6"
+model   = "claude-code/claude-sonnet-4-6"
 workdir = "."
 prompt  = "Você escreve testes automatizados para o código indicado no prompt."
 
 [agents.delegator]
 name    = "Task Delegator"
-vendor  = "claude_code"
-model   = "claude-sonnet-4-6"
+model   = "claude-code/claude-sonnet-4-6"
 workdir = "."
 prompt_file = "prompts/delegator.md"
 

@@ -6,24 +6,15 @@ Screen {
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 #sidebar {
-    width: 35;
+    width: 28;
     border-right: round #bd93f9;
     background: #282a36;
     padding: 1;
 }
 
-#sidebar-agents {
-    height: auto;
-    max-height: 50%;
-    background: #282a36;
-    border: round #6272a4;
-    padding: 1;
-    margin: 1 0;
-}
-
 #sidebar-events {
     height: auto;
-    max-height: 50%;
+    max-height: 100%;
     background: #282a36;
     border: round #6272a4;
     padding: 1;
@@ -39,8 +30,12 @@ Screen {
 }
 
 #columns {
-    height: 3fr;
+    height: 2fr;
     margin-bottom: 1;
+}
+
+#bottom-tabs {
+    height: 2fr;
 }
 
 .col {

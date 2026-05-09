@@ -284,6 +284,8 @@ class QueueRunner:
         """Resolve agent from TOML settings only."""
         agent_s: AgentSettings | None = self._settings.agents.get(agent_id)
         if agent_s:
+            if not agent_s.vendor:
+                return None
             return _AgentInfo(
                 label=agent_s.label,
                 vendor=agent_s.vendor,

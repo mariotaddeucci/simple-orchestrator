@@ -36,16 +36,14 @@ skills = ["my-skill", "other-skill"]
 [agents.reviewer]
 name     = "Code Reviewer"
 nickname = "reviewer"
-vendor   = "claude_code"
-model    = "claude-sonnet-4-6"
+model    = "claude-code/claude-sonnet-4-6"
 workdir  = "/workspace"
 prompt   = "You are an expert code reviewer..."  # inline prompt
 
 [agents.auditor]
 name        = "Security Auditor"
 nickname    = "auditor"
-vendor      = "claude_code"
-model       = "claude-opus-4-7"
+model       = "claude-code/claude-opus-4-7"
 workdir     = "/workspace"
 prompt_file = "prompts/security-auditor.md"   # path to markdown file
 
@@ -88,6 +86,7 @@ from pydantic_settings import (
 
 from .models.mcp import McpConfig
 from .models.skill import SkillConfig
+from .vendor_selector import normalize_vendor_id, parse_vendor_model_selection
 
 _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
 
@@ -147,7 +146,7 @@ class AgentSettings(BaseModel):
 
     name: str
     nickname: str | None = None
-    vendor: str
+    vendor: str | None = None
     model: str | None = None
     workdir: str | None = None
     task_timeout_minutes: float | None = None
@@ -159,6 +158,43 @@ class AgentSettings(BaseModel):
     ] = Field(default_factory=dict)
     skills: list[str | SkillConfig] = Field(default_factory=list)
     skill_globs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_vendor(self) -> AgentSettings:
+        if not self.vendor:
+            raise ValueError("AgentSettings requires a vendor (or a combined provider/model selection)")
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_vendor_model_selection(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+
+        raw_vendor = data.get("vendor")
+        raw_model = data.get("model")
+
+        if isinstance(raw_vendor, str):
+            raw_vendor = raw_vendor.strip()
+        if isinstance(raw_model, str):
+            raw_model = raw_model.strip()
+
+        # Accept "vendor/model" in either field (TOML-friendly).
+        if isinstance(raw_vendor, str) and "/" in raw_vendor and not raw_model:
+            selection = parse_vendor_model_selection(raw_vendor)
+            data["vendor"] = selection.vendor
+            data["model"] = selection.model
+            return data
+
+        if not raw_vendor and isinstance(raw_model, str) and "/" in raw_model:
+            selection = parse_vendor_model_selection(raw_model)
+            data["vendor"] = selection.vendor
+            data["model"] = selection.model
+            return data
+
+        if isinstance(raw_vendor, str):
+            data["vendor"] = normalize_vendor_id(raw_vendor)
+        return data
 
     @model_validator(mode="after")
     def _validate_prompt_source(self) -> AgentSettings:
