@@ -1021,7 +1021,7 @@ name = "simple-orchestrator-workspace"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "simple-orchestrator" },
+    { name = "simple-orchestrator", extra = ["standalone"] },
     { name = "simple-orchestrator-api-client" },
     { name = "simple-orchestrator-core" },
     { name = "simple-orchestrator-database" },
@@ -1039,7 +1039,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "simple-orchestrator", editable = "packages/simple-orchestrator" },
+    { name = "simple-orchestrator", extras = ["standalone"], editable = "packages/simple-orchestrator" },
     { name = "simple-orchestrator-api-client", editable = "packages/simple-orchestrator-api-client" },
     { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
     { name = "simple-orchestrator-database", editable = "packages/simple-orchestrator-database" },
