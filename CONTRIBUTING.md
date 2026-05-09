@@ -1,79 +1,77 @@
 # Contributing
 
-## Setup de desenvolvimento
+## Development setup
 
 ```bash
 git clone https://github.com/mariotaddeucci/simple-orchestrator
 cd simple-orchestrator
-uv sync --frozen          # instala dependências
-uv run prek install       # instala git hooks (lint + format + type check no commit)
+uv sync --frozen          # install dependencies
+uv run prek install       # install git hooks (lint + format + type check on commit)
 ```
 
 ---
 
-## Arquitetura
+## Architecture
 
-O projeto é um **UV workspace** com 7 pacotes. O princípio central é a separação de contratos (interfaces) da implementação: `simple-orchestrator-core` define o que cada componente deve fazer; os demais pacotes implementam ou consomem essas definições.
+The project is a **UV workspace** with 7 packages. The central principle is separation of contracts (interfaces) from implementation: `simple-orchestrator-core` defines what each component must do; the other packages implement or consume those definitions.
 
-### Pacotes e responsabilidades
+### Packages and responsibilities
 
-| Pacote | Módulo | Foco |
+| Package | Module | Focus |
 |---|---|---|
-| `simple-orchestrator` | `simple_orchestrator` | Ponto de entrada CLI (`worker`, `webapi`, `tui`) |
-| `simple-orchestrator-core` | `simple_orchestrator_core` | **Contratos**: Pydantic models, Protocol interfaces, settings, validators |
-| `simple-orchestrator-database` | `simple_orchestrator_database` | **Persistência**: implementa `IOrchestratorRepository` via SQLite/SQLModel |
-| `simple-orchestrator-webapi` | `simple_orchestrator_webapi` | **REST API**: FastAPI; delega todo acesso a dados ao pacote `database` |
-| `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execução**: fila de tarefas, agendamento de eventos, vendors (Claude/OpenCode/Copilot) |
-| `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **Cliente HTTP**: consome a REST API |
-| `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consome a REST API |
+| `simple-orchestrator` | `simple_orchestrator` | CLI entrypoints: `standalone`, `webapi`, `worker`, `tui` |
+| `simple-orchestrator-core` | `simple_orchestrator_core` | **Contracts**: Pydantic models, Protocol interfaces, settings, validators |
+| `simple-orchestrator-database` | `simple_orchestrator_database` | **Persistence**: implements `IOrchestratorRepository` via SQLite/SQLModel |
+| `simple-orchestrator-webapi` | `simple_orchestrator_webapi` | **REST API**: FastAPI; delegates all data access to the `database` package |
+| `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execution**: task queue, event scheduling, vendors (Claude/OpenCode/Copilot) |
+| `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **HTTP client**: consumes the REST API; implements `IOrchestratorClient` |
+| `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consumes the REST API via api-client |
 
 ---
 
-## Diagramas de arquitetura
+## Architecture diagrams
 
-### Modo standalone
+### Standalone mode
 
-No modo standalone, o comando `simple-orchestrator tui` gerencia o ciclo de vida de todos os componentes. A WebAPI e o worker são iniciados como **subprocessos** da TUI e encerrados automaticamente quando a TUI fecha.
+In standalone mode (`simple-orchestrator standalone`), TUI and worker share one `OrchestratorDB` instance directly — no HTTP, no subprocesses. The worker runs as a Textual background task inside the TUI process.
 
 ```
-  simple-orchestrator tui (processo pai)
+  simple-orchestrator standalone (single process)
   ┌────────────────────────────────────────────────────────────┐
   │                                                            │
-  │  TUI (Textual)          WebAPI (subprocesso)              │
-  │  ┌──────────────┐       ┌────────────────────┐            │
-  │  │  Queue tab   │       │  FastAPI :8765      │            │
-  │  │  Agents tab  │◄─────►│  /queue /agents     │            │
-  │  │  Events tab  │  HTTP │  /mcps /events      │            │
-  │  └──────────────┘       └────────────┬───────┘            │
-  │                                      │                    │
-  │  Worker (subprocesso)                │ OrchestratorDB     │
-  │  ┌──────────────┐       ┌────────────▼───────┐            │
-  │  │  QueueRunner │◄─────►│  SQLite             │            │
-  │  │  EventSched  │  HTTP └────────────────────┘            │
+  │  OrchestratorTUI (Textual)                                 │
+  │  ┌──────────────┐                                         │
+  │  │  Queue tab   │                                         │
+  │  │  Agents tab  │◄──────────────────────┐                 │
+  │  │  Events tab  │                       │                 │
+  │  └──────────────┘                       │ StandaloneClient│
+  │                                         │                 │
+  │  WorkerRunner (@work background task)   │ OrchestratorDB  │
+  │  ┌──────────────┐       ┌───────────────▼──────────────┐  │
+  │  │  QueueRunner │◄─────►│  SQLite (direct, no HTTP)    │  │
+  │  │  EventSched  │       └──────────────────────────────┘  │
   │  └──────────────┘                                         │
   └────────────────────────────────────────────────────────────┘
 ```
 
-Para desativar o modo standalone e conectar a uma WebAPI já existente:
+To use distributed mode instead, run each service separately:
 
 ```bash
-# Opção 1: flag explícita
-uv run simple-orchestrator tui --distributed
-
-# Opção 2: variável de ambiente
-ORCHESTRATOR_STANDALONE=false uv run simple-orchestrator tui
+uv run simple-orchestrator webapi   # owns the DB
+uv run simple-orchestrator worker   # connects via HTTP
+uv run simple-orchestrator tui      # connects via HTTP
 ```
 
-### Modo distribuído
+### Distributed mode
 
-TUI e worker se comunicam com a WebAPI via HTTP. Cada componente roda em processo independente.
+TUI and worker communicate with WebAPI via HTTP. Each component runs as an independent process.
 
 ```
   simple-orchestrator-tui          simple-orchestrator-worker
   ┌──────────────────────┐         ┌──────────────────────────┐
   │  Textual TUI         │         │  QueueRunner             │
-  │  (Queue/Agents/      │         │  (processa tarefas,      │
-  │   Events tabs)       │         │   agenda eventos)        │
+  │  (Queue/Agents/      │         │  (processes tasks,       │
+  │   Events tabs)       │         │   schedules events)      │
   └──────────┬───────────┘         └────────────┬─────────────┘
              │                                  │
              │  HTTP / REST                     │  HTTP / REST
@@ -99,74 +97,80 @@ TUI e worker se comunicam com a WebAPI via HTTP. Cada componente roda em process
                        └─────────┘
 ```
 
-### Fluxo de comunicação entre pacotes
+### Package communication flow
 
 ```
-  simple-orchestrator-core  ◄── importado por TODOS os outros pacotes
+  simple-orchestrator-core  ◄── imported by ALL other packages
   │
   ├── models/          Pydantic v2 (SessionRecord, QueueItem, AgentRecord,
   │                                 McpRecord, EventRecord, ...)
-  ├── interfaces.py    IOrchestratorRepository (Protocol = contrato)
-  ├── api.py           Request/Response Pydantic (compartilhados com api-client)
+  ├── interfaces.py    IOrchestratorRepository, IOrchestratorClient (Protocols)
+  ├── api.py           Request/Response Pydantic models (shared with api-client)
   ├── settings.py      WebApiSettings, WorkerSettings, TuiSettings
-  ├── schedule.py      compute_next_run() — cálculo de próxima execução (interval/cron)
+  ├── schedule.py      compute_next_run() — next-run calculation (interval/cron)
   └── validators.py    ValidULID, ValidWorkdir, ValidAgentId, ...
 
   simple-orchestrator-database
-  └── OrchestratorDB  implementa IOrchestratorRepository (SQLite/SQLModel)
+  └── OrchestratorDB  implements IOrchestratorRepository (SQLite/SQLModel)
 
   simple-orchestrator-api-client
-  └── ApiClient       cliente HTTP para a REST API
+  └── OrchestratorApiClient  HTTP client; implements IOrchestratorClient
 
   simple-orchestrator-webapi
-  ├── FastAPI routes  delega para OrchestratorDB (do pacote database)
-  └── session_config_builder  monta SessionConfig a partir de agente + MCPs globais do DB
+  ├── FastAPI routes  delegates to OrchestratorDB (from database package)
+  └── session_config_builder  builds SessionConfig from agent + global MCPs in DB
 
   simple-orchestrator-worker
-  ├── QueueRunner     dequeue/dispatch com controle de concorrência
-  ├── EventScheduler  agenda eventos periódicos (interval ou cron) via loop interno
+  ├── QueueRunner     dequeue/dispatch with concurrency control
+  ├── EventScheduler  schedules periodic events (interval or cron) via internal loop
   ├── vendors/base    BaseVendor ABC
   ├── vendors/claude_code
   ├── vendors/opencode
   └── vendors/copilot
 
   simple-orchestrator-tui
-  └── Textual TUI     tabs Queue / Agents / Events; consome a REST API via api-client
+  └── Textual TUI     Queue / Agents / Events tabs; consumes REST API via api-client
 ```
 
 ---
 
-## Princípios de design
+## Design principles
 
-**Core é o único pacote importado por todos.** Nenhum pacote importa de outro (exceto `database` → `core`, `webapi` → `database` + `core`, etc.). Isso previne dependências circulares.
+**Core is the only package imported by everyone.** No package imports from another peer (except `database` → `core`, `webapi` → `database` + `core`, etc.). This prevents circular dependencies.
 
-**Orientado a banco de dados.** Agentes, MCPs e eventos são gerenciados via API REST (e persistidos no SQLite). Não há mais configuração de agentes/MCPs via TOML — o TOML só define parâmetros de infraestrutura (db_path, porta, log_level, etc.).
+**Database-centric.** Agents, MCPs, and events are managed via the REST API and persisted in SQLite. There is no agent/MCP configuration via TOML — TOML defines infrastructure parameters only (`db_path`, port, `log_level`, etc.).
 
-**Modo standalone = subprocesso.** Ao rodar `simple-orchestrator tui`, a WebAPI e o worker são automaticamente iniciados como subprocessos e encerrados junto com a TUI.
+**Standalone mode = embedded worker.** Running `simple-orchestrator standalone` starts TUI with `WorkerRunner` as a Textual background task, both sharing one `OrchestratorDB` directly — no subprocess, no HTTP.
 
-**`IOrchestratorRepository` é o ponto de injeção.** Código que lê/escreve dados deve tipificar contra a Protocol, nunca contra `OrchestratorDB` diretamente.
+**`IOrchestratorRepository` is the injection point.** Code that reads/writes data must type against the Protocol, never against `OrchestratorDB` directly.
 
-**Vendors são assíncronos, DB é síncrono.** `OrchestratorDB` usa SQLAlchemy síncrono. A WebAPI envolve chamadas DB em `anyio.to_thread.run_sync()` para não bloquear o event loop.
+**`IOrchestratorClient` crosses the client boundary.** `WorkerRunner`, `ApiSessionStore`, and `OrchestratorTUI` are typed against this Protocol. Two concrete implementations exist: `StandaloneClient` (direct DB, no HTTP) and `OrchestratorApiClient` (HTTP). When adding a new cross-boundary method, add it to `IOrchestratorClient` first, then implement in both.
+
+**Vendors are async; DB is sync.** `OrchestratorDB` uses synchronous SQLAlchemy. WebAPI wraps DB calls in `anyio.to_thread.run_sync()` to avoid blocking the event loop.
+
+**All primary keys are ULIDs.** Time-ordered, generated at creation. Never use random UUIDs or auto-increment integers. `worker_id` in `WorkerSettings` is also a ULID, auto-generated at startup.
+
+**No `typing.Any` for interfaces.** Always use a Protocol or concrete type so static analysis catches mismatches between modes.
 
 ---
 
-## Testes
+## Tests
 
-Cada pacote tem configuração pytest própria — sempre use `--package`:
+Each package has its own pytest configuration — always use `--package`:
 
 ```bash
-# Todos os testes de um pacote
+# All tests for a package
 uv run --package simple-orchestrator-core    pytest packages/simple-orchestrator-core/
 uv run --package simple-orchestrator-worker  pytest packages/simple-orchestrator-worker/
 uv run --package simple-orchestrator-webapi  pytest packages/simple-orchestrator-webapi/
 
-# Arquivo único
+# Single file
 uv run --package simple-orchestrator-webapi  pytest packages/simple-orchestrator-webapi/tests/test_orchestrator_db.py
 
-# Por nome
+# By name
 uv run --package simple-orchestrator-core    pytest packages/simple-orchestrator-core/ -k test_parse_vendor
 
-# Integração (requer autenticação com vendors)
+# Integration (requires vendor auth)
 uv run --package simple-orchestrator-worker  pytest packages/simple-orchestrator-worker/ -m integration
 ```
 
@@ -179,16 +183,16 @@ uv run ruff check .           # lint
 uv run ruff check --fix .     # lint + auto-fix
 uv run ruff format .          # format
 uv run pyrefly check          # type check
-uv run prek run --all-files   # tudo de uma vez
+uv run prek run --all-files   # all at once
 ```
 
 ---
 
-## Adicionando um novo pacote ao workspace
+## Adding a new package to the workspace
 
-1. Crie `packages/<nome>/pyproject.toml` com `build-backend = "uv_build"`.
-2. Adicione `"packages/<nome>"` em `[tool.uv.workspace] members` no `pyproject.toml` raiz.
-3. Adicione a fonte em `[tool.uv.sources]` e em `dependencies` do workspace raiz.
-4. Se o pacote expõe código sob `pyrefly check`, adicione o path em `[tool.pyrefly] project_includes`.
-5. Execute `uv sync` (sem `--frozen`) para atualizar o lockfile.
-6. Crie `README.md` vazio no pacote (necessário para o build).
+1. Create `packages/<name>/pyproject.toml` with `build-backend = "uv_build"`.
+2. Add `"packages/<name>"` to `[tool.uv.workspace] members` in the root `pyproject.toml`.
+3. Add the source in `[tool.uv.sources]` and in `dependencies` of the workspace root.
+4. If the package exposes code under `pyrefly check`, add its path to `[tool.pyrefly] project_includes`.
+5. Run `uv sync` (without `--frozen`) to update the lockfile.
+6. Create an empty `README.md` in the package (required for the build).
