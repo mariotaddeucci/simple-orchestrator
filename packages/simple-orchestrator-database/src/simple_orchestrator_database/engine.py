@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Imported to register tables with SQLModel.metadata before create_all.
 import simple_orchestrator_core.models.agent_record
 import simple_orchestrator_core.models.memory_record
 import simple_orchestrator_core.models.queue_item

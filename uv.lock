@@ -7,6 +7,7 @@ members = [
     "simple-orchestrator",
     "simple-orchestrator-api-client",
     "simple-orchestrator-core",
+    "simple-orchestrator-database",
     "simple-orchestrator-tui",
     "simple-orchestrator-webapi",
     "simple-orchestrator-worker",
@@ -815,10 +816,22 @@ dependencies = [
     { name = "simple-orchestrator-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "anyio", extra = ["trio"] },
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "anyio", extras = ["trio"], specifier = ">=4.7.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
 ]
 
 [[package]]
@@ -832,11 +845,36 @@ dependencies = [
     { name = "sqlmodel" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.13.3" },
     { name = "pydantic-settings", specifier = ">=2.14.0" },
     { name = "python-ulid", specifier = ">=3.1.0" },
+    { name = "sqlmodel", specifier = ">=0.0.38" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.3" }]
+
+[[package]]
+name = "simple-orchestrator-database"
+version = "0.1.0"
+source = { editable = "packages/simple-orchestrator-database" }
+dependencies = [
+    { name = "python-ulid" },
+    { name = "simple-orchestrator-core" },
+    { name = "sqlmodel" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "python-ulid", specifier = ">=3.1.0" },
+    { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
     { name = "sqlmodel", specifier = ">=0.0.38" },
 ]
 
@@ -867,12 +905,15 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-ulid" },
     { name = "simple-orchestrator-core" },
+    { name = "simple-orchestrator-database" },
     { name = "sqlmodel" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "anyio", extra = ["trio"] },
+    { name = "pytest" },
     { name = "simple-orchestrator-api-client" },
 ]
 
@@ -883,12 +924,17 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.3" },
     { name = "python-ulid", specifier = ">=3.1.0" },
     { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
+    { name = "simple-orchestrator-database", editable = "packages/simple-orchestrator-database" },
     { name = "sqlmodel", specifier = ">=0.0.38" },
     { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "simple-orchestrator-api-client", editable = "packages/simple-orchestrator-api-client" }]
+dev = [
+    { name = "anyio", extras = ["trio"], specifier = ">=4.7.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "simple-orchestrator-api-client", editable = "packages/simple-orchestrator-api-client" },
+]
 
 [[package]]
 name = "simple-orchestrator-worker"
@@ -906,6 +952,13 @@ dependencies = [
     { name = "simple-orchestrator-core" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "anyio", extra = ["trio"] },
+    { name = "pytest" },
+    { name = "simple-orchestrator-webapi" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.7.0" },
@@ -919,6 +972,13 @@ requires-dist = [
     { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
 ]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "anyio", extras = ["trio"], specifier = ">=4.7.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "simple-orchestrator-webapi", editable = "packages/simple-orchestrator-webapi" },
+]
+
 [[package]]
 name = "simple-orchestrator-workspace"
 version = "0.1.0"
@@ -927,6 +987,7 @@ dependencies = [
     { name = "simple-orchestrator" },
     { name = "simple-orchestrator-api-client" },
     { name = "simple-orchestrator-core" },
+    { name = "simple-orchestrator-database" },
     { name = "simple-orchestrator-tui" },
     { name = "simple-orchestrator-webapi" },
     { name = "simple-orchestrator-worker" },
@@ -934,10 +995,8 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "anyio", extra = ["trio"] },
     { name = "prek" },
     { name = "pyrefly" },
-    { name = "pytest" },
     { name = "ruff" },
 ]
 
@@ -946,6 +1005,7 @@ requires-dist = [
     { name = "simple-orchestrator", editable = "packages/simple-orchestrator" },
     { name = "simple-orchestrator-api-client", editable = "packages/simple-orchestrator-api-client" },
     { name = "simple-orchestrator-core", editable = "packages/simple-orchestrator-core" },
+    { name = "simple-orchestrator-database", editable = "packages/simple-orchestrator-database" },
     { name = "simple-orchestrator-tui", editable = "packages/simple-orchestrator-tui" },
     { name = "simple-orchestrator-webapi", editable = "packages/simple-orchestrator-webapi" },
     { name = "simple-orchestrator-worker", editable = "packages/simple-orchestrator-worker" },
@@ -953,10 +1013,8 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "anyio", extras = ["trio"], specifier = ">=4.7.0" },
     { name = "prek", specifier = ">=0.3.11" },
     { name = "pyrefly", specifier = ">=0.63.1" },
-    { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.12" },
 ]
 

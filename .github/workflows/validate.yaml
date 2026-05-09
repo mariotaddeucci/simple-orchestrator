@@ -22,5 +22,22 @@ jobs:
       - name: Run prek on all files
         run: uv run prek run --all-files
 
-      - name: Run tests
-        run: uv run pytest --tb=short -q
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - simple-orchestrator-core
+          - simple-orchestrator-api-client
+          - simple-orchestrator-webapi
+          - simple-orchestrator-worker
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Run tests (${{ matrix.package }})
+        run: uv --directory packages/${{ matrix.package }} run pytest --tb=short -q

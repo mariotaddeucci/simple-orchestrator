@@ -10,13 +10,23 @@ dependencies = [
     "pydantic>=2.13.3",
     "python-ulid>=3.1.0",
     "simple-orchestrator-core",
+    "simple-orchestrator-database",
     "sqlmodel>=0.0.38",
     "uvicorn>=0.35.0",
 ]
 
 [dependency-groups]
 dev = [
+    "anyio[trio]>=4.7.0",
+    "pytest>=9.0.3",
     "simple-orchestrator-api-client",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that require live external services (copilot, claude, opencode)",
 ]
 
 [project.scripts]

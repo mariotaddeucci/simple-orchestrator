@@ -12,6 +12,14 @@ from .api import (
     SessionUpdateRequest,
     auth_headers,
 )
+from .interfaces import (
+    IAgentRepository,
+    IMemoryRepository,
+    IOrchestratorRepository,
+    IQueueRepository,
+    ISessionRepository,
+    IWorkerRepository,
+)
 from .settings import TuiSettings, WebApiSettings, WorkerSettings
 
 __all__ = [
@@ -20,6 +28,12 @@ __all__ = [
     "AgentUpsertRequest",
     "EnqueueRequest",
     "EnqueueResponse",
+    "IAgentRepository",
+    "IMemoryRepository",
+    "IOrchestratorRepository",
+    "IQueueRepository",
+    "ISessionRepository",
+    "IWorkerRepository",
     "QueueDequeueResponse",
     "QueueListResponse",
     "QueueUpdateRequest",
