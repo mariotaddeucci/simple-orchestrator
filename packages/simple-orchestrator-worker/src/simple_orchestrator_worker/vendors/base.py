@@ -33,6 +33,20 @@ class BaseVendor(ABC):
             await self._vendor_kill(session_id)
         await self._store.update_status(session_id, "killed", ended_at=datetime.now(UTC))
 
+    async def _prepare_config(self, config: SessionConfig) -> SessionConfig:
+        """Prepare the session configuration by resolving workdir and injecting instructions."""
+        resolved = await anyio.to_thread.run_sync(lambda: resolve_workdir(config.workdir))
+        workdir = resolved or tempfile.mkdtemp()
+
+        new_values: dict[str, Any] = {"workdir": workdir}
+
+        if config.always_open_pr:
+            pr_instruction = "Ao finalizar as modificações, abra um Pull Request com o que foi alterado."
+            if pr_instruction not in config.prompt:
+                new_values["prompt"] = f"{config.prompt}\n\n{pr_instruction}"
+
+        return config.model_copy(update=new_values)
+
     async def run(
         self,
         config: SessionConfig,
@@ -45,10 +59,8 @@ class BaseVendor(ABC):
         Compatible with both asyncio and trio backends via anyio.
         """
         session_id = session_id or str(ULID())
-        resolved = await anyio.to_thread.run_sync(lambda: resolve_workdir(config.workdir))
-        workdir = resolved or tempfile.mkdtemp()
-        if workdir != config.workdir:
-            config = config.model_copy(update={"workdir": workdir})
+        config = await self._prepare_config(config)
+        workdir = config.workdir or tempfile.mkdtemp()
 
         record = SessionRecord(
             id=session_id,
@@ -85,6 +97,12 @@ class BaseVendor(ABC):
 
     @abstractmethod
     async def list_models(self) -> list[ModelInfo]: ...
+
+    async def execute_session_wrapped(self, config: SessionConfig) -> AsyncIterator[Any]:
+        """Wrap execute_session to ensure config is prepared."""
+        prepared_config = await self._prepare_config(config)
+        async for chunk in self.execute_session(prepared_config):
+            yield chunk
 
     @abstractmethod
     async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]: ...

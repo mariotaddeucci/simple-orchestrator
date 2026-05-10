@@ -85,6 +85,9 @@ class WorkerSettings(_OrchestratorSettingsBase):
     default_task_timeout_minutes: float = Field(default=30.0, gt=0)
     heartbeat_interval_seconds: float = Field(default=10.0, gt=0)
 
+    jules_api_url: str = "https://api.jules.ai/v1"
+    jules_api_key: str | None = None
+
 
 class TuiSettings(_OrchestratorSettingsBase):
     logs_dir: Path = Path("logs")

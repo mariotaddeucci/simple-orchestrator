@@ -91,6 +91,7 @@ class OrchestratorDB:
                     model=req.model,
                     vendor=vendor,
                     task_timeout_minutes=req.task_timeout_minutes,
+                    always_open_pr=req.always_open_pr if req.always_open_pr is not None else False,
                     mcp_servers=req.mcp_servers,
                     skills=req.skills,
                     skill_globs=req.skill_globs,
@@ -103,6 +104,8 @@ class OrchestratorDB:
                 obj.model = req.model
                 obj.vendor = vendor
                 obj.task_timeout_minutes = req.task_timeout_minutes
+                if req.always_open_pr is not None:
+                    obj.always_open_pr = req.always_open_pr
                 obj.mcp_servers = req.mcp_servers
                 obj.skills = req.skills
                 obj.skill_globs = req.skill_globs
