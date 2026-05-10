@@ -85,6 +85,7 @@ class WorkerSettings(_OrchestratorSettingsBase):
     poll_interval_seconds: float = Field(default=1.0, gt=0)
     default_task_timeout_minutes: float = Field(default=30.0, gt=0)
     heartbeat_interval_seconds: float = Field(default=10.0, gt=0)
+    always_open_pr: bool = True
 
 
 class TuiSettings(_OrchestratorSettingsBase):

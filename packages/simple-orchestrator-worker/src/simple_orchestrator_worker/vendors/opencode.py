@@ -19,10 +19,10 @@ class OpenCodeVendor(BaseVendor):
     def __init__(
         self,
         session_store,
-        settings=None,
         base_url: str | None = None,
         provider_id: str = "anthropic",
         model_id: str = "claude-sonnet-4-5",
+        settings=None,
     ) -> None:
         super().__init__(session_store, settings=settings)
         self._base_url = base_url

@@ -25,8 +25,8 @@ class GithubCopilotVendor(BaseVendor):
     def __init__(
         self,
         session_store,
-        settings=None,
         model: str = "gpt-4o",
+        settings=None,
     ) -> None:
         super().__init__(session_store, settings=settings)
         self._model = model

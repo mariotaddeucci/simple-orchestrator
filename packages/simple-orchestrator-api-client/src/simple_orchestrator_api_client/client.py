@@ -58,7 +58,7 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def send_heartbeat(self, heartbeat: WorkerHeartbeat) -> None:
         async with self._client() as client:
-            r = await client.post("/heartbeat", json=heartbeat.model_dump())
+            r = await client.post("/heartbeat", json=heartbeat.model_dump(mode="json"))
             r.raise_for_status()
 
     # ── agents ───────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def upsert_agent(self, req: AgentUpsertRequest) -> AgentRecord:
         async with self._client() as client:
-            r = await client.post("/agents", json=req.model_dump())
+            r = await client.post("/agents", json=req.model_dump(mode="json"))
             r.raise_for_status()
             return AgentRecord.model_validate(r.json())
 
@@ -91,7 +91,7 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def enqueue(self, req: EnqueueRequest) -> QueueItem:
         async with self._client() as client:
-            r = await client.post("/queue", json=req.model_dump())
+            r = await client.post("/queue", json=req.model_dump(mode="json"))
             r.raise_for_status()
             parsed = EnqueueResponse.model_validate(r.json())
             return parsed.item
@@ -116,7 +116,7 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def update_queue_item(self, item_id: str, req: QueueUpdateRequest) -> QueueItem:
         async with self._client() as client:
-            r = await client.patch(f"/queue/{item_id}", content=req.model_dump_json(exclude_none=True))
+            r = await client.patch(f"/queue/{item_id}", json=req.model_dump(mode="json", exclude_none=True))
             r.raise_for_status()
             return QueueItem.model_validate(r.json())
 
@@ -155,12 +155,12 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def create_session(self, req: SessionCreateRequest) -> None:
         async with self._client() as client:
-            r = await client.post("/sessions", content=req.model_dump_json())
+            r = await client.post("/sessions", json=req.model_dump(mode="json"))
             r.raise_for_status()
 
     async def update_session(self, session_id: str, req: SessionUpdateRequest) -> None:
         async with self._client() as client:
-            r = await client.patch(f"/sessions/{session_id}", content=req.model_dump_json(exclude_none=True))
+            r = await client.patch(f"/sessions/{session_id}", json=req.model_dump(mode="json", exclude_none=True))
             r.raise_for_status()
 
     # ── mcps ─────────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def upsert_mcp(self, req: McpCreateRequest) -> McpRecord:
         async with self._client() as client:
-            r = await client.post("/mcps", json=req.model_dump())
+            r = await client.post("/mcps", json=req.model_dump(mode="json"))
             r.raise_for_status()
             return McpRecord.model_validate(r.json())
 
@@ -212,13 +212,13 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def create_event(self, req: EventCreateRequest) -> EventRecord:
         async with self._client() as client:
-            r = await client.post("/events", json=req.model_dump())
+            r = await client.post("/events", json=req.model_dump(mode="json"))
             r.raise_for_status()
             return EventRecord.model_validate(r.json())
 
     async def update_event(self, event_id: str, req: EventUpdateRequest) -> EventRecord:
         async with self._client() as client:
-            r = await client.patch(f"/events/{event_id}", json=req.model_dump(exclude_none=True))
+            r = await client.patch(f"/events/{event_id}", json=req.model_dump(mode="json", exclude_none=True))
             r.raise_for_status()
             return EventRecord.model_validate(r.json())
 

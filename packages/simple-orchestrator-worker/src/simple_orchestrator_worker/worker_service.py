@@ -5,7 +5,7 @@ from simple_orchestrator_core.settings import WorkerSettings
 
 from .logging_config import get_internal_logger
 from .session_store import ApiSessionStore, SessionStore
-from .vendors import ClaudeCodeVendor, GithubCopilotVendor, OpenCodeVendor
+from .vendors import ClaudeCodeVendor, GithubCopilotVendor, JulesVendor, OpenCodeVendor
 from .worker_runner import WorkerRunner
 
 logger = get_internal_logger(__name__)
@@ -16,6 +16,7 @@ def build_vendors(*, session_store: SessionStore, settings: WorkerSettings | Non
         "claude_code": ClaudeCodeVendor(session_store, settings=settings),
         "opencode": OpenCodeVendor(session_store, settings=settings),
         "github_copilot": GithubCopilotVendor(session_store, settings=settings),
+        "jules": JulesVendor(session_store, settings=settings),
     }
 
 

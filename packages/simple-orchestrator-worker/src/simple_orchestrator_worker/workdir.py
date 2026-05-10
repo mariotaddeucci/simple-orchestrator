@@ -41,7 +41,7 @@ def resolve_workdir(workdir: str | None, base_dir: Path | None = None) -> str | 
         _run_git(["clone", remote, str(repo_dir)])
         return str(repo_dir)
 
-    if not _is_git_worktree(repo_dir):
+    if not is_git_worktree(repo_dir):
         raise ValueError(f"workdir cache directory exists but is not a git repository: {repo_dir}")
 
     return str(repo_dir)
@@ -67,7 +67,8 @@ def _run_git(args: list[str], *, cwd: Path | None = None) -> None:
     )
 
 
-def _is_git_worktree(path: Path) -> bool:
+def is_git_worktree(path: Path | str) -> bool:
+    path = Path(path)
     try:
         subprocess.run(  # noqa: S603
             ["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],  # noqa: S607

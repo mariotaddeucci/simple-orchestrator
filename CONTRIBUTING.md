@@ -23,7 +23,7 @@ The project is a **UV workspace** with 7 packages. The central principle is sepa
 | `simple-orchestrator-core` | `simple_orchestrator_core` | **Contracts**: Pydantic models, Protocol interfaces, settings, validators |
 | `simple-orchestrator-database` | `simple_orchestrator_database` | **Persistence**: implements `IOrchestratorRepository` via SQLite/SQLModel |
 | `simple-orchestrator-webapi` | `simple_orchestrator_webapi` | **REST API**: FastAPI; delegates all data access to the `database` package |
-| `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execution**: task queue, event scheduling, vendors (Claude/OpenCode/Copilot) |
+| `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execution**: task queue, event scheduling, vendors (Claude/OpenCode/Copilot/Jules) |
 | `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **HTTP client**: consumes the REST API; implements `IOrchestratorClient` |
 | `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consumes the REST API via api-client |
 
@@ -126,7 +126,8 @@ TUI and worker communicate with WebAPI via HTTP. Each component runs as an indep
   ├── vendors/base    BaseVendor ABC
   ├── vendors/claude_code
   ├── vendors/opencode
-  └── vendors/copilot
+  ├── vendors/copilot
+  └── vendors/jules
 
   simple-orchestrator-tui
   └── Textual TUI     Queue / Agents / Events tabs; consumes REST API via api-client
