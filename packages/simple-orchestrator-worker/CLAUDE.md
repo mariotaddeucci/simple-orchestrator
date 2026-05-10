@@ -24,6 +24,7 @@ Robust execution: concurrency, per-`workdir` serialization, cancellation, timeou
 | `src/simple_orchestrator_worker/vendors/claude_code.py` | `ClaudeCodeVendor` |
 | `src/simple_orchestrator_worker/vendors/opencode.py` | `OpenCodeVendor` |
 | `src/simple_orchestrator_worker/vendors/github_copilot.py` | `GithubCopilotVendor` |
+| `src/simple_orchestrator_worker/vendors/jules.py` | `JulesVendor` |
 
 ## WorkerRunner lifecycle
 

@@ -8,12 +8,14 @@ _VENDOR_ALIASES: dict[str, str] = {
     "opencode": "opencode",
     "github-copilot": "github_copilot",
     "github_copilot": "github_copilot",
+    "jules": "jules",
 }
 
 _VENDOR_DISPLAY: dict[str, str] = {
     "claude_code": "claude-code",
     "opencode": "opencode",
     "github_copilot": "github-copilot",
+    "jules": "jules",
 }
 
 

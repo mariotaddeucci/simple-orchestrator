@@ -157,3 +157,5 @@ Two log streams — import the right one per module:
 **OpenCodeVendor** — HTTP client (`AsyncOpencode`). Creates session via `session.create()`, stores returned `vendor_session_id`. Kill calls `session.abort(vendor_session_id)`.
 
 **GithubCopilotVendor** — spawns CLI subprocess via `CopilotClient`. Session handle in `_active_handles`. Kill calls `session.abort()` then `session.disconnect()`.
+
+**JulesVendor** — cloud-based agent. Communicates via REST API (`JULES_API_URL`, `JULES_API_KEY`). Creates session via `POST /sessions`, chat via `POST /sessions/{id}/chat`, and abort via `POST /sessions/{id}/abort`.
