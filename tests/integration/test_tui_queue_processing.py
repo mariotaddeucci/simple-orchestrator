@@ -13,9 +13,9 @@ from utils import wait_until
 
 
 @pytest.mark.anyio
-async def test_tui_distributed_enqueue_and_process_with_dummy_agent(orch_db, api_client) -> None:
-    pytest.skip("FIXME: Failing with 422 in update_queue_item")
-    await api_client.upsert_agent(
+async def test_tui_enqueue_and_process_with_dummy_agent(orch_db, orchestrator_client) -> None:
+    # Use the client to upsert the agent to ensure it works for both standalone and distributed
+    await orchestrator_client.upsert_agent(
         AgentUpsertRequest(
             id="mock-test-agent",
             name="Mock Test Agent",
@@ -26,10 +26,10 @@ async def test_tui_distributed_enqueue_and_process_with_dummy_agent(orch_db, api
         ),
     )
 
-    store = ApiSessionStore(api_client)  # type: ignore[arg-type]
+    store = ApiSessionStore(orchestrator_client)  # type: ignore[arg-type]
     vendor = MockAgent(store, should_fail=False, delay_seconds=0.0)
     runner = WorkerRunner(
-        client=api_client,
+        client=orchestrator_client,
         vendors={"mock": vendor},
         settings=WorkerSettings(
             poll_interval_seconds=0.05,
@@ -42,7 +42,7 @@ async def test_tui_distributed_enqueue_and_process_with_dummy_agent(orch_db, api
     async with anyio.create_task_group() as tg:
         tg.start_soon(runner.start)
 
-        app = OrchestratorTUI(client=api_client, refresh_interval_seconds=0)
+        app = OrchestratorTUI(client=orchestrator_client, refresh_interval_seconds=0)
         async with app.run_test(size=(140, 50)) as pilot:
             await wait_until(pilot, lambda: app.query_one("#agents", DataTable).row_count == 1)
 
@@ -59,7 +59,7 @@ async def test_tui_distributed_enqueue_and_process_with_dummy_agent(orch_db, api
                 sel.value = "mock-test-agent"
             except Exception:
                 modal.query_one("#agent_id", Input).value = "mock-test-agent"
-            modal.query_one("#prompt", TextArea).text = "Please process this from the TUI distributed integration test"
+            modal.query_one("#prompt", TextArea).text = "Please process this from the TUI integration test"
 
             modal.query_one("#enqueue", Button).press()
 

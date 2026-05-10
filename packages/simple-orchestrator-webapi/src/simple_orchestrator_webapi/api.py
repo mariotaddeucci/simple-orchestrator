@@ -227,7 +227,9 @@ async def get_session(request: Request, session_id: str) -> SessionRecord:
 @router.post("/sessions", dependencies=[Depends(_require_api_key)])
 async def create_session(request: Request, req: SessionCreateRequest) -> dict[str, str]:
     db = _state(request).db
-    await anyio.to_thread.run_sync(lambda: db.save_session(req.record))
+    # Ensure nested SessionRecord is fully converted from Pydantic to SQLModel
+    record = SessionRecord.model_validate(req.record.model_dump())
+    await anyio.to_thread.run_sync(lambda: db.save_session(record))
     return {"status": "ok"}
 
 
