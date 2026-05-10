@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Literal
 
@@ -17,7 +18,13 @@ from ulid import ULID
 from .validators import MAX_DESCRIPTION_LENGTH, ValidULID
 
 _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
-_BASE_DIR = Path.home() / "simple-orchestrator"
+
+
+def get_base_dir() -> Path:
+    try:
+        return Path.home() / "simple-orchestrator"
+    except (RuntimeError, OSError):
+        return Path(tempfile.gettempdir()) / "simple-orchestrator"
 
 
 class _OrchestratorSettingsBase(BaseSettings):
@@ -57,8 +64,8 @@ class _OrchestratorSettingsBase(BaseSettings):
 
 
 class WebApiSettings(_OrchestratorSettingsBase):
-    db_path: str = str(_BASE_DIR / "orchestrator.db")
-    logs_dir: Path = _BASE_DIR / "logs"
+    db_path: str = str(get_base_dir() / "orchestrator.db")
+    logs_dir: Path = get_base_dir() / "logs"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     webapi_host: str = "127.0.0.1"
@@ -72,9 +79,9 @@ class WebApiSettings(_OrchestratorSettingsBase):
 
 
 class WorkerSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = _BASE_DIR / "logs"
-    git_cache_dir: Path = _BASE_DIR / "git"
-    db_path: str = str(_BASE_DIR / "orchestrator.db")
+    logs_dir: Path = get_base_dir() / "logs"
+    git_cache_dir: Path = get_base_dir() / "git"
+    db_path: str = str(get_base_dir() / "orchestrator.db")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     api_url: str = "http://127.0.0.1:8765"
@@ -91,10 +98,10 @@ class WorkerSettings(_OrchestratorSettingsBase):
 
 
 class TuiSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = _BASE_DIR / "logs"
+    logs_dir: Path = get_base_dir() / "logs"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    db_path: str = str(_BASE_DIR / "orchestrator.db")
+    db_path: str = str(get_base_dir() / "orchestrator.db")
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from simple_orchestrator_core.settings import WebApiSettings
 
 from .logging_config import get_internal_logger, setup_logging
@@ -10,7 +12,6 @@ def main() -> None:
 
     # Ensure required directories exist
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
-    from pathlib import Path
     Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
 
     setup_logging(settings.logs_dir, settings.log_level)
