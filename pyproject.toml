@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "anyio>=4.13.0",
+    "asgi-lifespan>=2.1.0",
     "prek>=0.3.11",
     "pyrefly>=0.63.1",
     "pytest>=9.0.3",

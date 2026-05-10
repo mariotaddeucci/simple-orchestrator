@@ -166,7 +166,7 @@ async def get_queue_item(request: Request, item_id: str) -> QueueItem:
     return item
 
 
-@router.patch("/queue/{item_id}", dependencies=[Depends(_require_api_key)])
+@router.patch("/queue/{item_id}", response_model=QueueItem, dependencies=[Depends(_require_api_key)])
 async def update_queue_item(request: Request, item_id: str, req: QueueUpdateRequest) -> QueueItem:
     db = _state(request).db
     item = await anyio.to_thread.run_sync(lambda: db.update_queue_item_api(item_id, req))
