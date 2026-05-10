@@ -116,7 +116,7 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def update_queue_item(self, item_id: str, req: QueueUpdateRequest) -> QueueItem:
         async with self._client() as client:
-            r = await client.patch(f"/queue/{item_id}", json=req.model_dump(exclude_none=True))
+            r = await client.patch(f"/queue/{item_id}", content=req.model_dump_json(exclude_none=True))
             r.raise_for_status()
             return QueueItem.model_validate(r.json())
 
@@ -155,12 +155,12 @@ class OrchestratorApiClient(BaseNodeWorker):
 
     async def create_session(self, req: SessionCreateRequest) -> None:
         async with self._client() as client:
-            r = await client.post("/sessions", json=req.model_dump())
+            r = await client.post("/sessions", content=req.model_dump_json())
             r.raise_for_status()
 
     async def update_session(self, session_id: str, req: SessionUpdateRequest) -> None:
         async with self._client() as client:
-            r = await client.patch(f"/sessions/{session_id}", json=req.model_dump(exclude_none=True))
+            r = await client.patch(f"/sessions/{session_id}", content=req.model_dump_json(exclude_none=True))
             r.raise_for_status()
 
     # ── mcps ─────────────────────────────────────────────────────────────────
