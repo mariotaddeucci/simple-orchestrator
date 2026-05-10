@@ -1,5 +1,4 @@
-"""Integration tests for the standalone architecture without binding a real HTTP port.
-"""
+"""Integration tests for the standalone architecture without binding a real HTTP port."""
 
 from __future__ import annotations
 
@@ -28,7 +27,7 @@ async def test_standalone_enqueue_and_worker_execution_success(orch_db, standalo
     )
 
     item = await standalone_client.enqueue(
-        EnqueueRequest(agent_id="mock-test-agent", prompt="Please analyze this test code and provide feedback")
+        EnqueueRequest(agent_id="mock-test-agent", prompt="Please analyze this test code and provide feedback"),
     )
     assert item.status == "pending"
 
@@ -74,7 +73,7 @@ async def test_standalone_enqueue_and_worker_execution_failure(orch_db, standalo
     )
 
     item = await standalone_client.enqueue(
-        EnqueueRequest(agent_id="mock-test-agent", prompt="This prompt will fail")
+        EnqueueRequest(agent_id="mock-test-agent", prompt="This prompt will fail"),
     )
     store = ApiSessionStore(standalone_client)  # type: ignore[arg-type]
     vendor = MockAgent(store, should_fail=True, delay_seconds=0.0)
