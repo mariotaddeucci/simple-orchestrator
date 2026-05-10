@@ -7,8 +7,8 @@ from utils import wait_until
 
 
 @pytest.mark.anyio
-async def test_tui_distributed_create_edit_delete_agent(orch_db, api_client) -> None:
-    app = OrchestratorTUI(client=api_client, refresh_interval_seconds=0)
+async def test_tui_create_edit_delete_agent(orch_db, orchestrator_client) -> None:
+    app = OrchestratorTUI(client=orchestrator_client, refresh_interval_seconds=0)
     async with app.run_test(size=(140, 50)) as pilot:
         agents_table = app.query_one("#agents", DataTable)
 
@@ -44,7 +44,10 @@ async def test_tui_distributed_create_edit_delete_agent(orch_db, api_client) -> 
         def _edit_modal_ready() -> bool:
             if app.screen.__class__.__name__ != "AgentEditorModal":
                 return False
-            return app.screen.query_one("#name", Input).value == "Test Agent"
+            try:
+                return app.screen.query_one("#name", Input).value == "Test Agent"
+            except Exception:
+                return False
 
         await wait_until(pilot, _edit_modal_ready)
 
@@ -52,7 +55,6 @@ async def test_tui_distributed_create_edit_delete_agent(orch_db, api_client) -> 
         modal.query_one("#name", Input).value = "Edited Agent"
         modal.query_one("#save", Button).press()
 
-        # Verify via DB
         await wait_until(
             pilot,
             lambda: (a := orch_db.get_agent(agent_id)) is not None and a.name == "Edited Agent",

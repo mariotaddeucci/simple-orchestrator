@@ -125,7 +125,7 @@ class WorkerRunner:
             return
 
         session_id = str(ULID())
-        await self.client.update_queue_item(lease.item.id, QueueUpdateRequest(session_id=session_id))
+        await self.client.update_queue_item(lease.item.id, QueueUpdateRequest(status="running", session_id=session_id))
 
         effective_timeout = lease.timeout_minutes or self.settings.default_task_timeout_minutes
         try:
