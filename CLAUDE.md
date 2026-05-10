@@ -89,6 +89,18 @@ uv run --package simple-orchestrator-webapi     pytest packages/simple-orchestra
 uv run --package simple-orchestrator-worker     pytest packages/simple-orchestrator-worker/
 ```
 
+**Integration tests (run from root):**
+
+```bash
+# Standalone (in-process DB):
+uv run pytest tests/integration/standalone
+
+# Vendor-specific (real API calls, incur costs):
+uv run pytest tests/integration/vendors/github-copilot -m vendor_cost
+uv run pytest tests/integration/vendors/claude-code -m vendor_cost
+uv run pytest tests/integration/vendors/opencode -m vendor_cost
+```
+
 ## Package index
 
 See also the `CLAUDE.md` inside each folder under `packages/`:

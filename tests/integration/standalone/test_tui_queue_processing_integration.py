@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import anyio
 import pytest
+from mock_agent import MockAgent
 from simple_orchestrator_core.api import AgentUpsertRequest
 from simple_orchestrator_core.settings import WorkerSettings
 from simple_orchestrator_database import OrchestratorDB
@@ -9,9 +10,7 @@ from simple_orchestrator_tui.app import OrchestratorTUI
 from simple_orchestrator_worker.session_store import ApiSessionStore
 from simple_orchestrator_worker.worker_runner import WorkerRunner
 from textual.widgets import Button, DataTable, Input, Select, TextArea
-
-from .mock_agent import MockAgent
-from .utils import InProcessOrchestratorClient, wait_until
+from utils import InProcessOrchestratorClient, wait_until
 
 
 @pytest.mark.anyio

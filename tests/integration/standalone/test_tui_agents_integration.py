@@ -4,8 +4,7 @@ import pytest
 from simple_orchestrator_database import OrchestratorDB
 from simple_orchestrator_tui.app import OrchestratorTUI
 from textual.widgets import Button, DataTable, Input, TextArea
-
-from .utils import InProcessOrchestratorClient, wait_until
+from utils import InProcessOrchestratorClient, wait_until
 
 
 @pytest.mark.anyio
