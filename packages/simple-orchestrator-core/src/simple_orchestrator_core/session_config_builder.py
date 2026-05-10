@@ -34,6 +34,7 @@ def build_session_config(
         workdir=item.workdir,
         mcp_servers=merged_mcps,
         skills=merged_skills,
+        agent_prompt=agent.prompt,
         env={"ORCHESTRATOR_TASK_ID": item.id},
     )
 

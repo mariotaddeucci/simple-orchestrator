@@ -26,8 +26,9 @@ class GithubCopilotVendor(BaseVendor):
         self,
         session_store,
         model: str = "gpt-4o",
+        settings=None,
     ) -> None:
-        super().__init__(session_store)
+        super().__init__(session_store, settings=settings)
         self._model = model
         self._active_handles: dict[str, CopilotSession] = {}
 
