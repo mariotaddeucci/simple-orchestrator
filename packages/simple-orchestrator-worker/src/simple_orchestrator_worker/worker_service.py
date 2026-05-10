@@ -12,14 +12,11 @@ logger = get_internal_logger(__name__)
 
 
 def build_vendors(*, session_store: SessionStore, settings: WorkerSettings | None = None) -> dict[str, object]:
-    jules_api_url = settings.jules_api_url if settings else "https://api.jules.ai/v1"
-    jules_api_key = settings.jules_api_key if settings else None
-
     return {
         "claude_code": ClaudeCodeVendor(session_store),
         "opencode": OpenCodeVendor(session_store),
         "github_copilot": GithubCopilotVendor(session_store),
-        "jules": JulesVendor(session_store, base_url=jules_api_url, api_key=jules_api_key),
+        "jules": JulesVendor(session_store),
     }
 
 

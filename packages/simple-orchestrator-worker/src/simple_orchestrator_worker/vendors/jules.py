@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -23,13 +24,13 @@ class JulesVendor(BaseVendor):
     def __init__(
         self,
         session_store,
-        base_url: str = "https://api.jules.ai/v1",
+        base_url: str | None = None,
         api_key: str | None = None,
         model: str = "jules-v1",
     ) -> None:
         super().__init__(session_store)
-        self._base_url = base_url.rstrip("/")
-        self._api_key = api_key
+        self._base_url = (base_url or os.getenv("JULES_API_URL") or "https://api.jules.ai/v1").rstrip("/")
+        self._api_key = api_key or os.getenv("JULES_API_KEY")
         self._model = model
         self._active_sessions: dict[str, str] = {}  # session_id -> vendor_session_id
 
