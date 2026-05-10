@@ -10,16 +10,12 @@ import pytest
 from mock_agent import MockAgent
 from simple_orchestrator_core.api import (
     AgentUpsertRequest,
-    QueueDequeueResponse,
-    QueueUpdateRequest,
-    SessionCreateRequest,
-    SessionUpdateRequest,
 )
-from simple_orchestrator_core.session_config_builder import build_session_config
-from simple_orchestrator_core.settings import WebApiSettings, WorkerSettings
-from simple_orchestrator_webapi.db.orchestrator import OrchestratorDB
+from simple_orchestrator_core.settings import WorkerSettings
+from simple_orchestrator_database import OrchestratorDB
 from simple_orchestrator_worker.session_store import ApiSessionStore
 from simple_orchestrator_worker.worker_runner import WorkerRunner
+from utils import InProcessOrchestratorClient
 
 
 @pytest.fixture
@@ -30,49 +26,8 @@ def orch_db(tmp_path):
     db.close()
 
 
-@pytest.fixture
-def webapi_settings(tmp_path):
-    return WebApiSettings(
-        db_path=str(tmp_path / "tui_test.db"),
-        logs_dir=tmp_path / "logs",
-        log_level="INFO",
-    )
-
-
-class InProcessApiClient:
-    """Test-only adapter that implements the subset of OrchestratorApiClient used by the worker/vendors."""
-
-    def __init__(self, *, db: OrchestratorDB, settings: WebApiSettings) -> None:
-        self._db = db
-        self._settings = settings
-
-    async def dequeue_next(self) -> QueueDequeueResponse | None:
-        item = self._db.dequeue_next()
-        if not item:
-            return None
-        agent = self._db.get_agent(item.agent_id)
-        assert agent is not None
-        global_mcps = self._db.list_mcps(is_global=True, enabled=True)
-        session_config = build_session_config(agent=agent, item=item, global_mcps=global_mcps)
-        return QueueDequeueResponse(
-            item=item,
-            vendor=agent.vendor,
-            timeout_minutes=agent.task_timeout_minutes,
-            session_config=session_config,
-        )
-
-    async def update_queue_item(self, item_id: str, req: QueueUpdateRequest):  # type: ignore[no-untyped-def]
-        return self._db.update_queue_item_api(item_id, req)
-
-    async def create_session(self, req: SessionCreateRequest) -> None:
-        self._db.save_session(req.record)
-
-    async def update_session(self, session_id: str, req: SessionUpdateRequest) -> None:
-        self._db.update_session_status(session_id, req)
-
-
 @pytest.mark.anyio
-async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_settings):
+async def test_tui_like_enqueue_and_worker_execution_success(orch_db):
     orch_db.upsert_agent(
         AgentUpsertRequest(
             id="mock-test-agent",
@@ -87,7 +42,7 @@ async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_set
     item = orch_db.enqueue(agent_id="mock-test-agent", prompt="Please analyze this test code and provide feedback")
     assert item.status == "pending"
 
-    client = InProcessApiClient(db=orch_db, settings=webapi_settings)
+    client = InProcessOrchestratorClient(db=orch_db)
     store = ApiSessionStore(client)  # type: ignore[arg-type]
     vendor = MockAgent(store, should_fail=False, delay_seconds=0.0)
     runner = WorkerRunner(
@@ -117,7 +72,7 @@ async def test_tui_like_enqueue_and_worker_execution_success(orch_db, webapi_set
 
 
 @pytest.mark.anyio
-async def test_tui_like_enqueue_and_worker_execution_failure(orch_db, webapi_settings):
+async def test_tui_like_enqueue_and_worker_execution_failure(orch_db):
     orch_db.upsert_agent(
         AgentUpsertRequest(
             id="mock-test-agent",
@@ -130,7 +85,7 @@ async def test_tui_like_enqueue_and_worker_execution_failure(orch_db, webapi_set
     )
 
     item = orch_db.enqueue(agent_id="mock-test-agent", prompt="This prompt will fail")
-    client = InProcessApiClient(db=orch_db, settings=webapi_settings)
+    client = InProcessOrchestratorClient(db=orch_db)
     store = ApiSessionStore(client)  # type: ignore[arg-type]
     vendor = MockAgent(store, should_fail=True, delay_seconds=0.0)
     runner = WorkerRunner(

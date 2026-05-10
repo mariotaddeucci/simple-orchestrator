@@ -71,7 +71,31 @@ webapi_port  = 8765
 
 ---
 
-## Usage
+## Testing
+
+Run unit tests for all packages:
+
+```bash
+uv run pytest
+```
+
+### Integration Tests
+
+The integration tests validate the system in different modes (standalone, distributed).
+
+**Standalone integration tests:**
+
+```bash
+uv run pytest tests/integration/standalone
+```
+
+**Vendor integration tests (incur API costs):**
+
+```bash
+uv run pytest tests/integration/vendors -m vendor_cost
+```
+
+---
 
 ### Standalone mode (recommended to start)
 
