@@ -7,19 +7,18 @@ import tempfile
 from pathlib import Path
 
 
-def git_cache_dir(remote: str) -> Path:
+def git_cache_dir(remote: str, base_dir: Path | None = None) -> Path:
     """Stable clone directory for a given git remote.
 
-    This directory is under the system temp folder and is intentionally *not*
-    cleaned up by the application (it acts as a cache).
+    This directory acts as a cache and is intentionally *not* cleaned up by the application.
     """
     normalized = remote.strip()
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    base = Path(tempfile.gettempdir()) / "simple-orchestrator" / "git"
+    base = base_dir or (Path.home() / "simple-orchestrator" / "git")
     return base / digest
 
 
-def resolve_workdir(workdir: str | None) -> str | None:
+def resolve_workdir(workdir: str | None, base_dir: Path | None = None) -> str | None:
     """Resolve workdir from (git remote | None) into a local directory path.
 
     - None -> None (caller may create a temp dir for the session)
@@ -36,7 +35,7 @@ def resolve_workdir(workdir: str | None) -> str | None:
         # Internal callers (and tests) may pass an already-resolved local path.
         return remote
 
-    repo_dir = git_cache_dir(remote)
+    repo_dir = git_cache_dir(remote, base_dir=base_dir)
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
 
     if not repo_dir.exists():

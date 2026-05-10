@@ -36,8 +36,8 @@ _CLAUDE_MODELS = [
 
 
 class ClaudeCodeVendor(BaseVendor):
-    def __init__(self, session_store, cli_path: str | None = None) -> None:
-        super().__init__(session_store)
+    def __init__(self, session_store, settings=None, cli_path: str | None = None) -> None:
+        super().__init__(session_store, settings=settings)
         self._cli_path = cli_path
 
     @property

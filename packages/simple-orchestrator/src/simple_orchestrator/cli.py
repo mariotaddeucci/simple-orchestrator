@@ -45,18 +45,24 @@ def cmd_standalone() -> None:
 
     worker_settings = WorkerSettings()
 
-    base_dir = Path.home() / "simple-orchestrator"
-    db_path = base_dir / "metadata.db"
-    logs_dir = base_dir / "logs"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
+    # Use paths from settings, ensuring they exist
+    worker_settings.logs_dir.mkdir(parents=True, exist_ok=True)
+    worker_settings.git_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    setup_worker_logging(logs_dir, worker_settings.log_level, enable_console=False)
+    setup_worker_logging(worker_settings.logs_dir, worker_settings.log_level, enable_console=False)
 
-    db = OrchestratorDB(db_path)
+    # Note: Standalone mode uses WorkerSettings for paths but could also use TuiSettings.
+    # We use worker_settings.git_cache_dir for vendors.
+    # For DB, we'll use the default from TuiSettings/WebApiSettings (consistent now).
+    from simple_orchestrator_core.settings import TuiSettings  # noqa: PLC0415
+
+    tui_settings = TuiSettings()
+    tui_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    db = OrchestratorDB(tui_settings.db_path)
     client = StandaloneClient(db)
     store = StandaloneSessionStore(db)
-    vendors = build_vendors(session_store=store)
+    vendors = build_vendors(session_store=store, settings=worker_settings)
     runner = WorkerRunner(client=client, vendors=vendors, settings=worker_settings)
 
     OrchestratorTUI(client=client, background_worker=runner.start).run()

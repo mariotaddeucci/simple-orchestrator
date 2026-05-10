@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import anyio
 from simple_orchestrator_core.models.session import SessionConfig, SessionRecord
+from simple_orchestrator_core.settings import WorkerSettings
 from ulid import ULID
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
@@ -20,8 +21,9 @@ logger = get_vendor_logger(__name__)
 
 
 class BaseVendor(ABC):
-    def __init__(self, session_store: SessionStore) -> None:
+    def __init__(self, session_store: SessionStore, settings: WorkerSettings | None = None) -> None:
         self._store = session_store
+        self._settings = settings or WorkerSettings()
 
     @property
     @abstractmethod
@@ -45,7 +47,9 @@ class BaseVendor(ABC):
         Compatible with both asyncio and trio backends via anyio.
         """
         session_id = session_id or str(ULID())
-        resolved = await anyio.to_thread.run_sync(lambda: resolve_workdir(config.workdir))
+        resolved = await anyio.to_thread.run_sync(
+            lambda: resolve_workdir(config.workdir, base_dir=self._settings.git_cache_dir),
+        )
         workdir = resolved or tempfile.mkdtemp()
         if workdir != config.workdir:
             config = config.model_copy(update={"workdir": workdir})

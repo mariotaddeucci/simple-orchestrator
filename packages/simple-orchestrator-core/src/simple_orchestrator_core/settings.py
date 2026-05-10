@@ -56,8 +56,8 @@ class _OrchestratorSettingsBase(BaseSettings):
 
 
 class WebApiSettings(_OrchestratorSettingsBase):
-    db_path: str = "orchestrator.db"
-    logs_dir: Path = Path("logs")
+    db_path: Path = Field(default_factory=lambda: Path.home() / "simple-orchestrator" / "orchestrator.db")
+    logs_dir: Path = Field(default_factory=lambda: Path.home() / "simple-orchestrator" / "logs")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     webapi_host: str = "127.0.0.1"
@@ -71,7 +71,8 @@ class WebApiSettings(_OrchestratorSettingsBase):
 
 
 class WorkerSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = Path("logs")
+    logs_dir: Path = Field(default_factory=lambda: Path.home() / "simple-orchestrator" / "logs")
+    git_cache_dir: Path = Field(default_factory=lambda: Path.home() / "simple-orchestrator" / "git")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     api_url: str = "http://127.0.0.1:8765"
@@ -87,10 +88,10 @@ class WorkerSettings(_OrchestratorSettingsBase):
 
 
 class TuiSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = Path("logs")
+    logs_dir: Path = Field(default_factory=lambda: Path.home() / "simple-orchestrator" / "logs")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    db_path: str = "orchestrator.db"
+    db_path: Path = Field(default_factory=lambda: Path.home() / "simple-orchestrator" / "orchestrator.db")
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 

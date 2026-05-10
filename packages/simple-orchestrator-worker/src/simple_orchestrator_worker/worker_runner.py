@@ -104,7 +104,11 @@ class WorkerRunner:
 
     async def _run_lease(self, lease: QueueDequeueResponse, limiter: CapacityLimiter) -> None:
         session_config = lease.session_config
-        workdir = str(git_cache_dir(session_config.workdir)) if session_config.workdir else lease.item.id
+        workdir = (
+            str(git_cache_dir(session_config.workdir, base_dir=self.settings.git_cache_dir))
+            if session_config.workdir
+            else lease.item.id
+        )
 
         async with limiter:
             lock = self._workdir_locks.get(workdir)
