@@ -22,9 +22,9 @@ Correct persistence: atomicity (claim/dequeue), consistent status transitions, a
 
 | Table | Primary key | Notable columns |
 |---|---|---|
-| `agents` | `id` (ULID) | `name`, `nickname`, `vendor`, `model`, `task_timeout_minutes`, `mcp_servers` (JSON), `skills` (JSON), `skill_globs` (JSON) |
+| `agents` | `id` (ULID) | `name`, `nickname`, `prompt`, `vendor`, `model`, `task_timeout_minutes`, `mcp_servers` (JSON), `skills` (JSON), `skill_globs` (JSON), `created_at` |
 | `queue` | `id` (ULID) | `agent_id`, `workdir` (git remote or null), `status`, `session_id`, `depends_on` (JSON), `note`, `created_at`, `started_at`, `ended_at` |
-| `sessions` | `id` (ULID) | `vendor`, `status`, `vendor_session_id`, timestamps |
+| `sessions` | `id` (ULID) | `vendor`, `prompt`, `workdir`, `started_at`, `status`, `ended_at`, `vendor_session_id` |
 | `memory` | `id` (ULID) | `agent_id`, `description`, `content`, `updated_at` |
 | `worker_heartbeats` | `id` (ULID) | `type`, `name`, `last_heartbeat_at` |
 | `mcps` | `id` (ULID) | Global MCP server definitions available to all agents |
