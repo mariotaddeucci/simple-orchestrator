@@ -98,14 +98,20 @@ class BaseVendor(ABC):
     @abstractmethod
     async def list_models(self) -> list[ModelInfo]: ...
 
-    async def execute_session_wrapped(self, config: SessionConfig) -> AsyncIterator[Any]:
-        """Wrap execute_session to ensure config is prepared."""
-        prepared_config = await self._prepare_config(config)
-        async for chunk in self.execute_session(prepared_config):
-            yield chunk
-
     @abstractmethod
-    async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]: ...
+    async def execute_session(self, config: SessionConfig) -> AsyncIterator[Any]:
+        """Execute a session and return an async iterator of events.
+
+        Note: Implementations should NOT call _prepare_config themselves if called via worker,
+        but external callers should use prepare_and_execute instead.
+        """
+        ...
+
+    async def prepare_and_execute(self, config: SessionConfig) -> AsyncIterator[Any]:
+        """Prepare config and then execute the session."""
+        prepared_config = await self._prepare_config(config)
+        async for chunk in await self.execute_session(prepared_config):
+            yield chunk
 
     @abstractmethod
     async def _run_session(self, session_id: str, config: SessionConfig) -> None: ...

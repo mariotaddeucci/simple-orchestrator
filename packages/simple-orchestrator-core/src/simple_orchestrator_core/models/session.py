@@ -41,6 +41,7 @@ class SessionConfig(BaseModel):
     agents: dict[str, AgentConfig] = PydanticField(default_factory=dict)
     subagents: dict[str, AgentConfig] = PydanticField(default_factory=dict)
     max_turns: int | None = None
+    agent_prompt: str | None = None
     always_open_pr: bool = False
     permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"] | None = None
     env: dict[str, str] = PydanticField(default_factory=dict)
