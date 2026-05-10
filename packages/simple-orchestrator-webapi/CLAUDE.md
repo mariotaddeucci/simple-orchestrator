@@ -41,6 +41,16 @@ Maintain parity with `simple-orchestrator-core/src/.../api.py` and `api-client`.
 | `GET` | `/sessions/{session_id}` | Get session |
 | `POST` | `/sessions` | Save session |
 | `PATCH` | `/sessions/{session_id}` | Update session status |
+| `GET` | `/mcps` | List all MCPs (filter: `is_global`, `enabled`) |
+| `GET` | `/mcps/{mcp_id}` | Get single MCP |
+| `POST` | `/mcps` | Upsert MCP |
+| `DELETE` | `/mcps/{mcp_id}` | Delete MCP |
+| `GET` | `/events` | List all events (filter: `enabled`) |
+| `GET` | `/events/{event_id}` | Get single event |
+| `POST` | `/events` | Create event |
+| `PATCH` | `/events/{event_id}` | Update event |
+| `DELETE` | `/events/{event_id}` | Delete event |
+| `POST` | `/events/{event_id}/trigger` | Trigger event (enqueue + update next_run) |
 
 ## Auth
 

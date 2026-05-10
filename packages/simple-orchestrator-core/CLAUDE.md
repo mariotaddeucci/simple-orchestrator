@@ -62,14 +62,29 @@ Single async contract satisfied by **both** `OrchestratorApiClient` (HTTP → we
 class IOrchestratorClient(Protocol):
     async def send_heartbeat(heartbeat: WorkerHeartbeat) -> None
     async def list_agents() -> list[AgentRecord]
+    async def get_agent(agent_id: str) -> AgentRecord
+    async def upsert_agent(req: AgentUpsertRequest) -> AgentRecord
+    async def delete_agent(agent_id: str) -> None
     async def enqueue(req: EnqueueRequest) -> QueueItem
     async def list_queue(*, status, agent_id) -> list[QueueItem]
+    async def get_queue_item(item_id: str) -> QueueItem
     async def update_queue_item(item_id, req: QueueUpdateRequest) -> QueueItem
+    async def cancel(item_id: str) -> None
     async def dequeue_next() -> QueueDequeueResponse | None
     async def create_session(req: SessionCreateRequest) -> None
     async def update_session(session_id, req: SessionUpdateRequest) -> None
+    async def list_sessions(*, vendor, status) -> list[SessionRecord]
+    async def get_session(session_id: str) -> SessionRecord
+    async def list_mcps(*, is_global, enabled) -> list[McpRecord]
+    async def get_mcp(mcp_id: str) -> McpRecord
+    async def upsert_mcp(req: McpCreateRequest) -> McpRecord
+    async def delete_mcp(mcp_id: str) -> None
     async def list_events(*, enabled) -> list[EventRecord]
+    async def get_event(event_id: str) -> EventRecord
+    async def create_event(req: EventCreateRequest) -> EventRecord
     async def update_event(event_id, req: EventUpdateRequest) -> EventRecord
+    async def delete_event(event_id: str) -> None
+    async def trigger_event(event_id: str) -> QueueItem
 ```
 
 **Rule**: never add `OrchestratorApiClient` or `StandaloneClient` as a type annotation outside their own packages. Always use `IOrchestratorClient`.
@@ -78,15 +93,15 @@ class IOrchestratorClient(Protocol):
 
 | Model | SQLModel | Key fields |
 |---|---|---|
-| `AgentRecord` | ✅ | `id` (ULID pk), `name`, `nickname`, `vendor`, `model`, `workdir`, `task_timeout_minutes`, `mcp_servers`, `skills`, `skill_globs` |
-| `QueueItem` | ✅ | `id`, `agent_id`, `prompt`, `workdir`, `status`, `session_id`, `depends_on`, `note`, timestamps |
-| `SessionRecord` | ✅ | `id`, `vendor`, `prompt`, `workdir`, `status`, `vendor_session_id`, timestamps |
+| `AgentRecord` | ✅ | `id` (ULID pk), `name`, `nickname`, `prompt`, `vendor`, `model`, `task_timeout_minutes`, `mcp_servers`, `skills`, `skill_globs`, `created_at` |
+| `QueueItem` | ✅ | `id`, `agent_id`, `prompt`, `workdir`, `status`, `session_id`, `depends_on`, `note`, `created_at`, `started_at`, `ended_at` |
+| `SessionRecord` | ✅ | `id`, `vendor`, `prompt`, `workdir`, `started_at`, `status`, `ended_at`, `vendor_session_id` |
 | `MemoryRecord` | ✅ | `id`, `agent_id`, `description`, `content`, `updated_at` |
 | `WorkerHeartbeatRecord` | ✅ | `id`, `type`, `name`, `last_heartbeat_at` |
 | `McpRecord` | ✅ | `id`, `name`, `type` (str: stdio/sse/http), `command`, `args`, `env`, `url`, `headers`, `is_global`, `enabled` |
 | `EventRecord` | ✅ | `id`, `name`, `agent_id`, `prompt`, `workdir`, `schedule_type` (str: interval/cron), `interval_minutes`, `cron_expression`, `next_run`, `enabled` |
 | `AgentConfig` | ❌ | `description`, `prompt`, `model`, `tools`, `skills`, `mcp_servers`, `max_turns`, `effort`, `permission_mode` |
-| `SessionConfig` | ❌ | `prompt`, `model`, `workdir`, `mcp_servers`, `skills`, `max_turns`, `permission_mode`, `env` |
+| `SessionConfig` | ❌ | `prompt`, `model`, `workdir`, `mcp_servers`, `skills`, `agents`, `subagents`, `max_turns`, `permission_mode`, `env` |
 | `McpConfig` | ❌ | Union of `McpStdioConfig | McpSseConfig | McpHttpConfig` (discriminator: `type`) |
 
 ## Settings defaults

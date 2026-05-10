@@ -34,7 +34,7 @@ Robust execution: concurrency, per-`workdir` serialization, cancellation, timeou
 1. `start()` — launches heartbeat loop, dequeue/dispatch loop, and event scheduler loop concurrently.
 2. **Heartbeat loop** — calls `client.send_heartbeat()` every `heartbeat_interval_seconds`.
 3. **Dispatch loop** — polls `client.dequeue_next()` every `poll_interval_seconds`; respects `max_active_sessions`.
-4. **Event scheduler loop** — checks for due events via `client.list_events(enabled=True)` and enqueues them; updates `next_run` after firing.
+4. **Event scheduler loop** — polls for due events via `client.list_events(enabled=True)`; enqueues them via `client.enqueue()` if no duplicate pending task exists; updates `next_run` via `client.update_event()`.
 5. `_run_lease()` — acquires per-`workdir` lock, then calls vendor `run()`.
 6. `_process_lease()` — updates queue item with `session_id`, runs vendor, writes final status back.
 
