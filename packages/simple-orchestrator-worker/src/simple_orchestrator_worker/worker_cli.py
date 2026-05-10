@@ -8,6 +8,11 @@ from simple_orchestrator_worker.worker_service import run_worker_forever
 
 def main() -> None:
     settings = WorkerSettings()
+
+    # Ensure required directories exist
+    settings.logs_dir.mkdir(parents=True, exist_ok=True)
+    settings.git_cache_dir.mkdir(parents=True, exist_ok=True)
+
     setup_logging(settings.logs_dir, settings.log_level)
 
     log = get_internal_logger(__name__)

@@ -31,6 +31,13 @@ def cmd_standalone() -> None:
     """Start TUI with an embedded worker — both read/write the SQLite DB directly (no HTTP)."""
     from simple_orchestrator_core.settings import WorkerSettings  # noqa: PLC0415
 
+    worker_settings = WorkerSettings()
+
+    # Ensure required directories exist
+    worker_settings.logs_dir.mkdir(parents=True, exist_ok=True)
+    worker_settings.git_cache_dir.mkdir(parents=True, exist_ok=True)
+    Path(worker_settings.db_path).parent.mkdir(parents=True, exist_ok=True)
+
     try:
         from simple_orchestrator_database.repository import OrchestratorDB  # noqa: PLC0415
         from simple_orchestrator_tui.app import OrchestratorTUI  # noqa: PLC0415
@@ -43,17 +50,9 @@ def cmd_standalone() -> None:
         _print_missing_dep(extra="standalone", err=e)
         raise typer.Exit(1) from e
 
-    worker_settings = WorkerSettings()
+    setup_worker_logging(worker_settings.logs_dir, worker_settings.log_level, enable_console=False)
 
-    base_dir = Path.home() / "simple-orchestrator"
-    db_path = base_dir / "metadata.db"
-    logs_dir = base_dir / "logs"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    setup_worker_logging(logs_dir, worker_settings.log_level, enable_console=False)
-
-    db = OrchestratorDB(db_path)
+    db = OrchestratorDB(worker_settings.db_path)
     client = StandaloneClient(db)
     store = StandaloneSessionStore(db)
     vendors = build_vendors(session_store=store)

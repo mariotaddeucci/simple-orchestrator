@@ -17,6 +17,7 @@ from ulid import ULID
 from .validators import MAX_DESCRIPTION_LENGTH, ValidULID
 
 _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
+_BASE_DIR = Path.home() / "simple-orchestrator"
 
 
 class _OrchestratorSettingsBase(BaseSettings):
@@ -56,8 +57,8 @@ class _OrchestratorSettingsBase(BaseSettings):
 
 
 class WebApiSettings(_OrchestratorSettingsBase):
-    db_path: str = "orchestrator.db"
-    logs_dir: Path = Path("logs")
+    db_path: str = str(_BASE_DIR / "orchestrator.db")
+    logs_dir: Path = _BASE_DIR / "logs"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     webapi_host: str = "127.0.0.1"
@@ -71,7 +72,9 @@ class WebApiSettings(_OrchestratorSettingsBase):
 
 
 class WorkerSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = Path("logs")
+    logs_dir: Path = _BASE_DIR / "logs"
+    git_cache_dir: Path = _BASE_DIR / "git"
+    db_path: str = str(_BASE_DIR / "orchestrator.db")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     api_url: str = "http://127.0.0.1:8765"
@@ -88,10 +91,10 @@ class WorkerSettings(_OrchestratorSettingsBase):
 
 
 class TuiSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = Path("logs")
+    logs_dir: Path = _BASE_DIR / "logs"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    db_path: str = "orchestrator.db"
+    db_path: str = str(_BASE_DIR / "orchestrator.db")
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 
