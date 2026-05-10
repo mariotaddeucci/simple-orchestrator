@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Simple Orchestrator{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- We'll use a simple reactivity library like Alpine.js or just custom JS if requested "no build" -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .tui-bg { background-color: #1a1b26; }
+        .tui-panel { background-color: #24283b; }
+        .tui-border { border-color: #7aa2f7; }
+        .tui-text { color: #c0caf5; }
+        .tui-text-muted { color: #565f89; }
+        .tui-accent { color: #7aa2f7; }
+        .tui-error { color: #f7768e; }
+        .tui-success { color: #9ece6a; }
+        .tui-warning { color: #e0af68; }
+    </style>
+</head>
+<body class="tui-bg tui-text min-h-screen flex flex-col" x-data="orchestratorApp('{{ api_url }}', '{{ api_key }}')">
+    <header class="bg-[#16161e] p-4 border-b tui-border flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <i data-lucide="cpu" class="tui-accent"></i>
+            <h1 class="text-xl font-bold">Simple Orchestrator</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <span class="text-sm tui-text-muted" x-text="statusMessage"></span>
+            <button @click="refreshAll()" class="p-2 hover:bg-[#24283b] rounded transition">
+                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Sidebar -->
+        <nav class="w-64 bg-[#16161e] border-r tui-border flex flex-col">
+            <div class="p-4 space-y-2">
+                <a href="/" class="flex items-center space-x-2 p-2 rounded hover:bg-[#24283b] transition" :class="window.location.pathname === '/' ? 'bg-[#24283b] text-white' : ''">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/agents" class="flex items-center space-x-2 p-2 rounded hover:bg-[#24283b] transition" :class="window.location.pathname === '/agents' ? 'bg-[#24283b] text-white' : ''">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span>Agents</span>
+                </a>
+                <a href="/mcps" class="flex items-center space-x-2 p-2 rounded hover:bg-[#24283b] transition" :class="window.location.pathname === '/mcps' ? 'bg-[#24283b] text-white' : ''">
+                    <i data-lucide="server" class="w-5 h-5"></i>
+                    <span>MCP Servers</span>
+                </a>
+                <a href="/events" class="flex items-center space-x-2 p-2 rounded hover:bg-[#24283b] transition" :class="window.location.pathname === '/events' ? 'bg-[#24283b] text-white' : ''">
+                    <i data-lucide="calendar" class="w-5 h-5"></i>
+                    <span>Scheduler</span>
+                </a>
+            </div>
+            <div class="mt-auto p-4 border-t tui-border">
+                <div class="text-xs tui-text-muted uppercase font-bold mb-2">Connected API</div>
+                <div class="text-xs truncate" title="{{ api_url }}">{{ api_url }}</div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto p-6">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('orchestratorApp', (apiUrl, apiKey) => ({
+                api: new OrchestratorApi(apiUrl, apiKey),
+                statusMessage: 'Disconnected',
+                agents: [],
+                events: [],
+                queue: [],
+
+                async init() {
+                    lucide.createIcons();
+                    await this.refreshAll();
+                    setInterval(() => this.refreshQueue(), 5000);
+                },
+
+                async refreshAll() {
+                    this.statusMessage = 'Refreshing...';
+                    try {
+                        const [agents, events] = await Promise.all([
+                            this.api.listAgents(),
+                            this.api.listEvents()
+                        ]);
+                        this.agents = agents.agents;
+                        this.events = events.events;
+                        await this.refreshQueue();
+                        this.statusMessage = 'Connected';
+                    } catch (e) {
+                        this.statusMessage = 'Error connecting to API';
+                        console.error(e);
+                    }
+                },
+
+                async refreshQueue() {
+                    try {
+                        const queue = await this.api.listQueue();
+                        this.queue = queue.items;
+                    } catch (e) {
+                        console.error('Failed to refresh queue', e);
+                    }
+                }
+            }));
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

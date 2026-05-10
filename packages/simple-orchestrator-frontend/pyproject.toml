@@ -1,0 +1,20 @@
+[project]
+name = "simple-orchestrator-frontend"
+version = "0.1.0"
+description = "Web frontend for simple-orchestrator using FastAPI, Jinja2, and Tailwind CSS"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "jinja2>=3.1.0",
+    "simple-orchestrator-core",
+    "simple-orchestrator-api-client",
+    "uvicorn>=0.35.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+simple-orchestrator-frontend = "simple_orchestrator_frontend.frontend_cli:main"

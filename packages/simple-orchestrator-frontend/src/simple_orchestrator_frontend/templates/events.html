@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Scheduler - Simple Orchestrator{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="eventsPage()">
+    <div class="flex justify-between items-center">
+        <h2 class="text-2xl font-bold">Scheduler</h2>
+        <button @click="openCreate()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold transition flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Novo Evento
+        </button>
+    </div>
+
+    <!-- Events Table -->
+    <div class="tui-panel border tui-border rounded-lg overflow-hidden">
+        <table class="w-full text-left">
+            <thead class="bg-[#16161e] border-b tui-border text-xs uppercase font-bold tui-text-muted">
+                <tr>
+                    <th class="p-4">Name / ID</th>
+                    <th class="p-4">Agent</th>
+                    <th class="p-4">Schedule</th>
+                    <th class="p-4">Status</th>
+                    <th class="p-4 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y tui-border">
+                <template x-for="event in events" :key="event.id">
+                    <tr class="hover:bg-[#16161e] transition">
+                        <td class="p-4">
+                            <div class="font-bold" x-text="event.name"></div>
+                            <div class="text-xs font-mono tui-text-muted" x-text="event.id"></div>
+                        </td>
+                        <td class="p-4 text-sm" x-text="event.agent_id"></td>
+                        <td class="p-4 text-sm">
+                            <template x-if="event.schedule_type === 'interval'">
+                                <span x-text="'Every ' + event.interval_minutes + 'm'"></span>
+                            </template>
+                            <template x-if="event.schedule_type === 'cron'">
+                                <span class="font-mono" x-text="event.cron_expression"></span>
+                            </template>
+                        </td>
+                        <td class="p-4">
+                            <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold" :class="event.enabled ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'" x-text="event.enabled ? 'Enabled' : 'Disabled'"></span>
+                        </td>
+                        <td class="p-4 text-right space-x-2">
+                            <button @click="trigger(event)" title="Trigger Now" class="p-2 hover:bg-[#24283b] rounded tui-success transition">
+                                <i data-lucide="play" class="w-4 h-4"></i>
+                            </button>
+                            <button @click="openEdit(event)" class="p-2 hover:bg-[#24283b] rounded tui-accent transition">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button @click="confirmDelete(event)" class="p-2 hover:bg-[#24283b] rounded tui-error transition">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal (Create/Edit) -->
+    <div x-show="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50" x-cloak>
+        <div class="tui-panel border tui-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+            <div class="p-4 border-b tui-border flex justify-between items-center sticky top-0 bg-[#24283b]">
+                <h3 class="font-bold" x-text="editingEvent ? 'Editar Evento' : 'Novo Evento'"></h3>
+                <button @click="showModal = false" class="tui-text-muted hover:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Name</label>
+                    <input type="text" x-model="form.name" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Agente</label>
+                        <select x-model="form.agent_id" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="">Selecione um agente...</option>
+                            <template x-for="agent in agents" :key="agent.id">
+                                <option :value="agent.id" x-text="agent.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Workdir (opcional)</label>
+                        <input type="text" x-model="form.workdir" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Prompt</label>
+                    <textarea x-model="form.prompt" rows="3" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Schedule Type</label>
+                        <select x-model="form.schedule_type" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="interval">Interval</option>
+                            <option value="cron">Cron</option>
+                        </select>
+                    </div>
+                    <div x-show="form.schedule_type === 'interval'">
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Interval Minutes</label>
+                        <input type="number" x-model.number="form.interval_minutes" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div x-show="form.schedule_type === 'cron'">
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Cron Expression</label>
+                        <input type="text" x-model="form.cron_expression" placeholder="*/5 * * * *" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="form.enabled" class="w-4 h-4 bg-[#1a1b26] border tui-border rounded">
+                    <span class="text-sm">Enabled</span>
+                </label>
+            </div>
+            <div class="p-4 border-t tui-border flex justify-end gap-3 sticky bottom-0 bg-[#24283b]">
+                <button @click="showModal = false" class="px-4 py-2 rounded font-bold hover:bg-[#1a1b26] transition">Cancelar</button>
+                <button @click="save()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-bold transition">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function eventsPage() {
+        return {
+            showModal: false,
+            editingEvent: false,
+            form: {
+                id: '',
+                name: '',
+                agent_id: '',
+                prompt: '',
+                workdir: '',
+                schedule_type: 'interval',
+                interval_minutes: 60,
+                cron_expression: '',
+                enabled: true
+            },
+
+            openCreate() {
+                this.editingEvent = false;
+                this.form = {
+                    name: '',
+                    agent_id: '',
+                    prompt: '',
+                    workdir: '',
+                    schedule_type: 'interval',
+                    interval_minutes: 60,
+                    cron_expression: '',
+                    enabled: true
+                };
+                this.showModal = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            openEdit(event) {
+                this.editingEvent = true;
+                this.form = { ...event };
+                this.showModal = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            async save() {
+                try {
+                    if (this.editingEvent) {
+                        await this.api.updateEvent(this.form.id, this.form);
+                    } else {
+                        await this.api.createEvent(this.form);
+                    }
+                    this.showModal = false;
+                    await this.refreshAll();
+                } catch (e) {
+                    alert('Erro ao salvar: ' + e.message);
+                }
+            },
+
+            async confirmDelete(event) {
+                if (confirm(`Excluir evento ${event.name}?`)) {
+                    try {
+                        await this.api.deleteEvent(event.id);
+                        await this.refreshAll();
+                    } catch (e) {
+                        alert('Erro ao excluir: ' + e.message);
+                    }
+                }
+            },
+
+            async trigger(event) {
+                try {
+                    await this.api.triggerEvent(event.id);
+                    alert('Evento disparado com sucesso!');
+                    await this.refreshQueue();
+                } catch (e) {
+                    alert('Erro ao disparar: ' + e.message);
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}
