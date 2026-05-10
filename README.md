@@ -6,7 +6,7 @@
 
 ## What is it?
 
-**simple-orchestrator** is a Python framework that coordinates AI agent execution (Claude Code, OpenCode, GitHub Copilot) in the background, with concurrency control and SQLite persistence.
+**simple-orchestrator** is a Python framework that coordinates AI agent execution (Claude Code, OpenCode, GitHub Copilot, Jules) in the background, with concurrency control and SQLite persistence.
 
 Designed for pipelines where a "delegator" agent distributes work to specialized agents, or for automating recurring tasks (code review, audits, reports) without human intervention.
 
@@ -28,8 +28,9 @@ Designed for pipelines where a "delegator" agent distributes work to specialized
 | **Scheduled events** | Create events with fixed interval (`interval_minutes`) or cron expression (`cron_expression`). Worker fires them automatically and computes next `next_run`. |
 | **Task dependencies** | A task can declare `depends_on`; it only starts after all dependencies complete. |
 | **Two execution modes** | Standalone (one command, automatic subprocesses) or distributed (REST API + remote worker). |
-| **Multi-vendor** | Supports `claude_code`, `opencode`, and `github_copilot` as backends. |
+| **Multi-vendor** | Supports `claude_code`, `opencode`, `github_copilot`, and `jules` as backends. |
 | **TUI** | Terminal interface with Queue, Agents, and Events tabs. Queue a task by selecting an agent from the list. |
+| **Agent Skills** | Built-in skills for agents: `memory-tool` (persistent memory), `queue-tasks` (delegation), and `task-executor` (task lifecycle). |
 
 ---
 
