@@ -16,7 +16,6 @@ class AgentRecord(SQLModel, table=True):
     model: str | None = None
     vendor: str
     task_timeout_minutes: float | None = None
-    always_open_pr: bool = Field(default=False)
     # Stored as raw JSON. Interpreted by Web API when building SessionConfig.
     mcp_servers: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=True))
     skills: list = Field(default_factory=list, sa_column=Column(JSON, nullable=True))

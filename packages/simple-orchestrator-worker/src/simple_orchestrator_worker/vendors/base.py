@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING, Any
 
 import anyio
 from simple_orchestrator_core.models.session import SessionConfig, SessionRecord
+from simple_orchestrator_core.settings import WorkerSettings
 from ulid import ULID
 
 from simple_orchestrator_worker.logging_config import get_vendor_logger
 from simple_orchestrator_worker.session_store import SessionStore
-from simple_orchestrator_worker.workdir import resolve_workdir
+from simple_orchestrator_worker.workdir import is_git_worktree, resolve_workdir
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -20,8 +21,9 @@ logger = get_vendor_logger(__name__)
 
 
 class BaseVendor(ABC):
-    def __init__(self, session_store: SessionStore) -> None:
+    def __init__(self, session_store: SessionStore, settings: WorkerSettings | None = None) -> None:
         self._store = session_store
+        self._settings = settings or WorkerSettings()
 
     @property
     @abstractmethod
@@ -40,7 +42,13 @@ class BaseVendor(ABC):
 
         new_values: dict[str, Any] = {"workdir": workdir}
 
-        if config.always_open_pr:
+        # Global setting for PR, but only if we have a workdir (which implies a git repo potentially)
+        # and it's not an empty path and it is a git worktree.
+        is_git = False
+        if workdir:
+            is_git = await anyio.to_thread.run_sync(lambda: is_git_worktree(workdir))
+
+        if self._settings.always_open_pr and workdir and is_git:
             pr_instruction = "Ao finalizar as modificações, abra um Pull Request com o que foi alterado."
             if pr_instruction not in config.prompt:
                 new_values["prompt"] = f"{config.prompt}\n\n{pr_instruction}"

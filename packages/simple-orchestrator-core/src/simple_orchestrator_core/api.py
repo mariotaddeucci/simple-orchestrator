@@ -72,7 +72,6 @@ class AgentUpsertRequest(BaseModel):
     vendor: str | None = None
     model: str | None = None
     task_timeout_minutes: float | None = None
-    always_open_pr: bool | None = None
     prompt: str
     mcp_servers: dict = Field(default_factory=dict)
     skills: list = Field(default_factory=list)

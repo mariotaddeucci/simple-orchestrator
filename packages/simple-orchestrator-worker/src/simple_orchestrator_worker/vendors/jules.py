@@ -27,8 +27,9 @@ class JulesVendor(BaseVendor):
         base_url: str | None = None,
         api_key: str | None = None,
         model: str = "jules-v1",
+        settings=None,
     ) -> None:
-        super().__init__(session_store)
+        super().__init__(session_store, settings=settings)
         self._base_url = (base_url or os.getenv("JULES_API_URL") or "https://api.jules.ai/v1").rstrip("/")
         self._api_key = api_key or os.getenv("JULES_API_KEY")
         self._model = model

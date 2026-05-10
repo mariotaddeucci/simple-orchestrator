@@ -13,10 +13,10 @@ logger = get_internal_logger(__name__)
 
 def build_vendors(*, session_store: SessionStore, settings: WorkerSettings | None = None) -> dict[str, object]:
     return {
-        "claude_code": ClaudeCodeVendor(session_store),
-        "opencode": OpenCodeVendor(session_store),
-        "github_copilot": GithubCopilotVendor(session_store),
-        "jules": JulesVendor(session_store),
+        "claude_code": ClaudeCodeVendor(session_store, settings=settings),
+        "opencode": OpenCodeVendor(session_store, settings=settings),
+        "github_copilot": GithubCopilotVendor(session_store, settings=settings),
+        "jules": JulesVendor(session_store, settings=settings),
     }
 
 

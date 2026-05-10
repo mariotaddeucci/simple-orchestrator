@@ -35,7 +35,6 @@ def build_session_config(
         mcp_servers=merged_mcps,
         skills=merged_skills,
         agent_prompt=agent.prompt,
-        always_open_pr=agent.always_open_pr,
         env={"ORCHESTRATOR_TASK_ID": item.id},
     )
 
