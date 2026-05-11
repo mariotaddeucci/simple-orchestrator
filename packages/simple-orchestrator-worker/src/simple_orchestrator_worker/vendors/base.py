@@ -37,20 +37,19 @@ class BaseVendor(ABC):
 
     async def _prepare_config(self, config: SessionConfig) -> SessionConfig:
         """Prepare the session configuration by resolving workdir and injecting instructions."""
-        resolved = await anyio.to_thread.run_sync(
-            lambda: resolve_workdir(config.workdir, self._settings.git_cache_dir),
+        workdir = (
+            await anyio.to_thread.run_sync(
+                lambda: resolve_workdir(config.workdir, self._settings.git_cache_dir),
+            )
+            or tempfile.mkdtemp()
         )
-        workdir = resolved or tempfile.mkdtemp()
 
         new_values: dict[str, Any] = {"workdir": workdir}
 
-        # Global setting for PR, but only if we have a workdir (which implies a git repo potentially)
-        # and it's not an empty path and it is a git worktree.
-        is_git = False
-        if workdir:
-            is_git = await anyio.to_thread.run_sync(lambda: is_git_worktree(workdir))
+        # Global setting for PR, but only if we have a workdir and it is a git worktree.
+        is_git = await anyio.to_thread.run_sync(lambda: is_git_worktree(workdir))
 
-        if self._settings.always_open_pr and workdir and is_git:
+        if self._settings.always_open_pr and is_git:
             pr_instruction = "Ao finalizar as modificações, abra um Pull Request com o que foi alterado."
             if pr_instruction not in config.prompt:
                 new_values["prompt"] = f"{config.prompt}\n\n{pr_instruction}"
