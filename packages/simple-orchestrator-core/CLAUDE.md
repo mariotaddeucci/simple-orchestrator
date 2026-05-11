@@ -108,7 +108,9 @@ class IOrchestratorClient(Protocol):
 
 | Setting | Class | Default |
 |---|---|---|
-| `db_path` | `WebApiSettings`, `TuiSettings` | `"orchestrator.db"` |
+| `db_path` | `WebApiSettings`, `WorkerSettings`, `TuiSettings` | `~/simple-orchestrator/orchestrator.db` |
+| `logs_dir` | `WebApiSettings`, `WorkerSettings`, `TuiSettings` | `~/simple-orchestrator/logs` |
+| `git_cache_dir` | `WorkerSettings` | `~/simple-orchestrator/git` |
 | `webapi_host` / `webapi_port` | `WebApiSettings` | `127.0.0.1:8765` |
 | `api_key` | `WebApiSettings` | `"change-me"` |
 | `heartbeat_ttl_seconds` | `WebApiSettings` | `30.0` |
