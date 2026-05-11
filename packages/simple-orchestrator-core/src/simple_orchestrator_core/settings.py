@@ -23,11 +23,15 @@ _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
 def get_base_dir() -> Path:
     try:
         return Path.home() / "simple-orchestrator"
-    except RuntimeError, OSError:
+    except (RuntimeError, OSError):
         return Path(tempfile.gettempdir()) / "simple-orchestrator"
 
 
 class _OrchestratorSettingsBase(BaseSettings):
+    db_path: str = str(get_base_dir() / "orchestrator.db")
+    logs_dir: Path = get_base_dir() / "logs"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
     model_config = SettingsConfigDict(
         env_prefix="ORCHESTRATOR_",
         env_file=".env",
@@ -64,10 +68,6 @@ class _OrchestratorSettingsBase(BaseSettings):
 
 
 class WebApiSettings(_OrchestratorSettingsBase):
-    db_path: str = str(get_base_dir() / "orchestrator.db")
-    logs_dir: Path = get_base_dir() / "logs"
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-
     webapi_host: str = "127.0.0.1"
     webapi_port: int = 8765
     api_key: str = "change-me"
@@ -79,10 +79,7 @@ class WebApiSettings(_OrchestratorSettingsBase):
 
 
 class WorkerSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = get_base_dir() / "logs"
     git_cache_dir: Path = get_base_dir() / "git"
-    db_path: str = str(get_base_dir() / "orchestrator.db")
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
@@ -98,10 +95,6 @@ class WorkerSettings(_OrchestratorSettingsBase):
 
 
 class TuiSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = get_base_dir() / "logs"
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-
-    db_path: str = str(get_base_dir() / "orchestrator.db")
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 
