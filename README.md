@@ -12,6 +12,8 @@ Designed for pipelines where a "delegator" agent distributes work to specialized
 
 **Database-centric:** agents, MCPs, and scheduled events are created and managed via the REST API — not config files. `orchestrator.toml` defines infrastructure parameters only.
 
+**Persistence:** By default, all data (SQLite database, logs, and git cache) is stored in `~/simple-orchestrator/`. This directory is created automatically on the first run.
+
 **Two execution modes:**
 - **Standalone** — `simple-orchestrator standalone` starts TUI with an embedded worker sharing one SQLite database directly — no HTTP, no subprocesses.
 - **Distributed** — WebAPI, worker, and TUI run as separate processes (optionally on different hosts), communicating via HTTP.
@@ -55,9 +57,11 @@ uv run prek install   # install git hooks
 
 ### `orchestrator.toml` (infrastructure)
 
+By default, these values point to `~/simple-orchestrator/`. You only need to define them if you want to override the defaults.
+
 ```toml
-db_path             = "orchestrator.db"
-logs_dir            = "logs"
+db_path             = "~/simple-orchestrator/orchestrator.db"
+logs_dir            = "~/simple-orchestrator/logs"
 log_level           = "INFO"
 max_active_sessions = 4
 default_task_timeout_minutes = 30.0

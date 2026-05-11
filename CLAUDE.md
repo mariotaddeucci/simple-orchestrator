@@ -13,6 +13,7 @@ Note: `AGENTS.md` at the root is a symlink to this file.
 
 ## Architecture principles
 
+- **Persistence**: All data (SQLite DB, logs, git cache) defaults to `~/simple-orchestrator/`.
 - `simple-orchestrator-core` is the **contract**: Pydantic models, Protocols, and API shapes.
 - Everything else depends on `core` — never the reverse.
 - `database` implements `IOrchestratorRepository` (SQLite) and is consumed by `webapi`.
