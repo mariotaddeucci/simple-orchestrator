@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Simple Orchestrator{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="dashboard()">
+    <!-- Kanban Columns -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 h-[calc(100vh-250px)]">
+        <!-- Pending -->
+        <div class="flex flex-col tui-panel border tui-border rounded-lg overflow-hidden">
+            <div class="bg-[#16161e] p-3 border-b tui-border flex justify-between items-center">
+                <h3 class="font-bold flex items-center gap-2">
+                    <i data-lucide="clock" class="w-4 h-4 tui-warning"></i>
+                    Pendente
+                </h3>
+                <span class="text-xs bg-[#24283b] px-2 py-1 rounded" x-text="queue.filter(i => i.status === 'pending').length"></span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                <template x-for="item in queue.filter(i => i.status === 'pending')" :key="item.id">
+                    <div class="p-3 bg-[#1a1b26] border tui-border rounded hover:border-blue-500 transition cursor-pointer">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="text-xs font-mono tui-text-muted" x-text="item.id.substring(0,8)"></span>
+                            <span class="text-[10px] uppercase font-bold tui-accent" x-text="item.agent_id"></span>
+                        </div>
+                        <p class="text-sm line-clamp-2" x-text="item.prompt"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Running -->
+        <div class="flex flex-col tui-panel border tui-border rounded-lg overflow-hidden">
+            <div class="bg-[#16161e] p-3 border-b tui-border flex justify-between items-center">
+                <h3 class="font-bold flex items-center gap-2">
+                    <i data-lucide="play" class="w-4 h-4 tui-accent"></i>
+                    Em execução
+                </h3>
+                <span class="text-xs bg-[#24283b] px-2 py-1 rounded" x-text="queue.filter(i => i.status === 'running').length"></span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                <template x-for="item in queue.filter(i => i.status === 'running')" :key="item.id">
+                    <div class="p-3 bg-[#1a1b26] border tui-accent rounded">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="text-xs font-mono tui-text-muted" x-text="item.id.substring(0,8)"></span>
+                            <span class="text-[10px] uppercase font-bold tui-accent" x-text="item.agent_id"></span>
+                        </div>
+                        <p class="text-sm mb-2" x-text="item.prompt"></p>
+                        <div class="w-full bg-[#24283b] h-1 rounded-full overflow-hidden">
+                            <div class="bg-blue-500 h-full animate-pulse" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Completed -->
+        <div class="flex flex-col tui-panel border tui-border rounded-lg overflow-hidden">
+            <div class="bg-[#16161e] p-3 border-b tui-border flex justify-between items-center">
+                <h3 class="font-bold flex items-center gap-2">
+                    <i data-lucide="check-circle" class="w-4 h-4 tui-success"></i>
+                    Concluído (recente)
+                </h3>
+                <span class="text-xs bg-[#24283b] px-2 py-1 rounded" x-text="queue.filter(i => ['completed', 'failed'].includes(i.status)).length"></span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                <template x-for="item in queue.filter(i => ['completed', 'failed'].includes(i.status)).slice(0, 20)" :key="item.id">
+                    <div class="p-3 bg-[#1a1b26] border tui-border rounded opacity-75">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="text-xs font-mono tui-text-muted" x-text="item.id.substring(0,8)"></span>
+                            <span class="text-[10px] uppercase font-bold" :class="item.status === 'completed' ? 'tui-success' : 'tui-error'" x-text="item.status"></span>
+                        </div>
+                        <p class="text-sm line-clamp-1 tui-text-muted" x-text="item.prompt"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Interaction / Chat Block -->
+    <div class="tui-panel border tui-border rounded-lg p-4">
+        <h3 class="font-bold mb-4 flex items-center gap-2">
+            <i data-lucide="message-square" class="w-5 h-5 tui-accent"></i>
+            Iteração Rápida
+        </h3>
+        <div class="flex gap-4">
+            <div class="flex-1 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Agente</label>
+                        <select x-model="quickEnqueue.agent_id" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="">Selecione um agente...</option>
+                            <template x-for="agent in agents" :key="agent.id">
+                                <option :value="agent.id" x-text="agent.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Workdir (opcional)</label>
+                        <input type="text" x-model="quickEnqueue.workdir" placeholder="git remote url..." class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Prompt</label>
+                    <textarea x-model="quickEnqueue.prompt" rows="3" placeholder="O que o agente deve fazer?" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+                <div class="flex justify-end">
+                    <button @click="submitEnqueue()" :disabled="!quickEnqueue.agent_id || !quickEnqueue.prompt" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-bold transition flex items-center gap-2">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        Enqueue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function dashboard() {
+        return {
+            quickEnqueue: {
+                agent_id: '',
+                prompt: '',
+                workdir: ''
+            },
+
+            async submitEnqueue() {
+                try {
+                    await this.api.enqueue(this.quickEnqueue);
+                    this.quickEnqueue.prompt = '';
+                    await this.refreshQueue();
+                    alert('Item adicionado à fila!');
+                } catch (e) {
+                    alert('Erro ao adicionar item: ' + e.message);
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

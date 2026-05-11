@@ -15,6 +15,7 @@ dependencies = [
     "simple-orchestrator-webapi",
     "simple-orchestrator-worker",
     "simple-orchestrator-tui",
+    "simple-orchestrator-frontend",
 ]
 
 [dependency-groups]
@@ -105,6 +106,7 @@ project_includes = [
     "packages/simple-orchestrator-webapi/src/simple_orchestrator_webapi",
     "packages/simple-orchestrator-worker/src/simple_orchestrator_worker",
     "packages/simple-orchestrator-tui/src/simple_orchestrator_tui",
+    "packages/simple-orchestrator-frontend/src/simple_orchestrator_frontend",
 ]
 
 [tool.pytest.ini_options]
@@ -147,6 +149,7 @@ members = [
     "packages/simple-orchestrator",
     "packages/simple-orchestrator-tui",
     "packages/simple-orchestrator-worker",
+    "packages/simple-orchestrator-frontend",
 ]
 
 [tool.uv.sources]
@@ -157,3 +160,4 @@ simple-orchestrator-webapi = { workspace = true }
 simple-orchestrator-tui = { workspace = true }
 simple-orchestrator-worker = { workspace = true }
 simple-orchestrator = { workspace = true }
+simple-orchestrator-frontend = { workspace = true }

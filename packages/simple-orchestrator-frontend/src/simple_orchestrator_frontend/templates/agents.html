@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Agents - Simple Orchestrator{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="agentsPage()">
+    <div class="flex justify-between items-center">
+        <h2 class="text-2xl font-bold">Agents</h2>
+        <button @click="openCreate()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold transition flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Novo Agente
+        </button>
+    </div>
+
+    <!-- Agents Table -->
+    <div class="tui-panel border tui-border rounded-lg overflow-hidden">
+        <table class="w-full text-left">
+            <thead class="bg-[#16161e] border-b tui-border text-xs uppercase font-bold tui-text-muted">
+                <tr>
+                    <th class="p-4">ID / Name</th>
+                    <th class="p-4">Vendor / Model</th>
+                    <th class="p-4 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y tui-border">
+                <template x-for="agent in agents" :key="agent.id">
+                    <tr class="hover:bg-[#16161e] transition">
+                        <td class="p-4">
+                            <div class="font-bold" x-text="agent.name"></div>
+                            <div class="text-xs font-mono tui-text-muted" x-text="agent.id"></div>
+                        </td>
+                        <td class="p-4">
+                            <div x-text="agent.vendor"></div>
+                            <div class="text-xs tui-text-muted" x-text="agent.model || '-'"></div>
+                        </td>
+                        <td class="p-4 text-right space-x-2">
+                            <button @click="openEdit(agent)" class="p-2 hover:bg-[#24283b] rounded tui-accent transition">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button @click="confirmDelete(agent)" class="p-2 hover:bg-[#24283b] rounded tui-error transition">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal (Create/Edit) -->
+    <div x-show="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50" x-cloak>
+        <div class="tui-panel border tui-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+            <div class="p-4 border-b tui-border flex justify-between items-center sticky top-0 bg-[#24283b]">
+                <h3 class="font-bold" x-text="editingAgent ? 'Editar Agente' : 'Novo Agente'"></h3>
+                <button @click="showModal = false" class="tui-text-muted hover:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">ID</label>
+                        <input type="text" x-model="form.id" :disabled="editingAgent" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Name</label>
+                        <input type="text" x-model="form.name" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Vendor</label>
+                        <input type="text" x-model="form.vendor" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Model</label>
+                        <input type="text" x-model="form.model" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tui-text-muted mb-1">System Prompt</label>
+                    <textarea x-model="form.prompt" rows="6" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Skills (JSON)</label>
+                        <textarea x-model="form.skills" rows="3" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">MCP Servers (JSON)</label>
+                        <textarea x-model="form.mcp_servers" rows="3" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t tui-border flex justify-end gap-3 sticky bottom-0 bg-[#24283b]">
+                <button @click="showModal = false" class="px-4 py-2 rounded font-bold hover:bg-[#1a1b26] transition">Cancelar</button>
+                <button @click="save()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-bold transition">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function agentsPage() {
+        return {
+            showModal: false,
+            editingAgent: false,
+            form: {
+                id: '',
+                name: '',
+                vendor: '',
+                model: '',
+                prompt: '',
+                skills: '[]',
+                mcp_servers: '{}'
+            },
+
+            openCreate() {
+                this.editingAgent = false;
+                this.form = {
+                    id: 'agent-' + Math.random().toString(36).substr(2, 9),
+                    name: '',
+                    vendor: 'claude_code',
+                    model: 'claude-3-5-sonnet-latest',
+                    prompt: 'You are a helpful assistant.',
+                    skills: '[]',
+                    mcp_servers: '{}'
+                };
+                this.showModal = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            openEdit(agent) {
+                this.editingAgent = true;
+                this.form = {
+                    ...agent,
+                    skills: JSON.stringify(agent.skills || [], null, 2),
+                    mcp_servers: JSON.stringify(agent.mcp_servers || {}, null, 2)
+                };
+                this.showModal = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            async save() {
+                try {
+                    const data = {
+                        ...this.form,
+                        skills: JSON.parse(this.form.skills),
+                        mcp_servers: JSON.parse(this.form.mcp_servers)
+                    };
+                    await this.api.upsertAgent(data);
+                    this.showModal = false;
+                    await this.refreshAll();
+                } catch (e) {
+                    alert('Erro ao salvar: ' + e.message);
+                }
+            },
+
+            async confirmDelete(agent) {
+                if (confirm(`Excluir agente ${agent.name}?`)) {
+                    try {
+                        await this.api.deleteAgent(agent.id);
+                        await this.refreshAll();
+                    } catch (e) {
+                        alert('Erro ao excluir: ' + e.message);
+                    }
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

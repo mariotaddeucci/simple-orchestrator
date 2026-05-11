@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Servers - Simple Orchestrator{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="mcpsPage()">
+    <div class="flex justify-between items-center">
+        <h2 class="text-2xl font-bold">MCP Servers</h2>
+        <button @click="openCreate()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold transition flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Novo MCP Server
+        </button>
+    </div>
+
+    <!-- MCPs Table -->
+    <div class="tui-panel border tui-border rounded-lg overflow-hidden">
+        <table class="w-full text-left">
+            <thead class="bg-[#16161e] border-b tui-border text-xs uppercase font-bold tui-text-muted">
+                <tr>
+                    <th class="p-4">Name / ID</th>
+                    <th class="p-4">Type</th>
+                    <th class="p-4">Global / Enabled</th>
+                    <th class="p-4 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y tui-border" x-data="{ mcps: [] }" x-init="mcps = (await api.listMcps()).mcps">
+                <template x-for="mcp in mcps" :key="mcp.id">
+                    <tr class="hover:bg-[#16161e] transition">
+                        <td class="p-4">
+                            <div class="font-bold" x-text="mcp.name"></div>
+                            <div class="text-xs font-mono tui-text-muted" x-text="mcp.id"></div>
+                        </td>
+                        <td class="p-4 text-sm" x-text="mcp.type"></td>
+                        <td class="p-4">
+                            <div class="flex gap-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold" :class="mcp.is_global ? 'bg-purple-900 text-purple-200' : 'bg-gray-700 text-gray-300'" x-text="mcp.is_global ? 'Global' : 'Agent-only'"></span>
+                                <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold" :class="mcp.enabled ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'" x-text="mcp.enabled ? 'Enabled' : 'Disabled'"></span>
+                            </div>
+                        </td>
+                        <td class="p-4 text-right space-x-2">
+                            <button @click="openEdit(mcp)" class="p-2 hover:bg-[#24283b] rounded tui-accent transition">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button @click="confirmDelete(mcp)" class="p-2 hover:bg-[#24283b] rounded tui-error transition">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal (Create/Edit) -->
+    <div x-show="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50" x-cloak>
+        <div class="tui-panel border tui-border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+            <div class="p-4 border-b tui-border flex justify-between items-center sticky top-0 bg-[#24283b]">
+                <h3 class="font-bold" x-text="editingMcp ? 'Editar MCP Server' : 'Novo MCP Server'"></h3>
+                <button @click="showModal = false" class="tui-text-muted hover:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">ID</label>
+                        <input type="text" x-model="form.id" :disabled="editingMcp" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Name</label>
+                        <input type="text" x-model="form.name" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Type</label>
+                        <select x-model="form.type" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="stdio">stdio</option>
+                            <option value="sse">sse</option>
+                            <option value="http">http</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">URL (SSE/HTTP)</label>
+                        <input type="text" x-model="form.url" placeholder="https://..." class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div x-show="form.type === 'stdio'">
+                    <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Command (stdio)</label>
+                    <input type="text" x-model="form.command" placeholder="npx, python, etc." class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Args (JSON List)</label>
+                        <textarea x-model="form.args" rows="3" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tui-text-muted mb-1">Env (JSON Dict)</label>
+                        <textarea x-model="form.env" rows="3" class="w-full bg-[#1a1b26] border tui-border rounded p-2 text-sm focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                    </div>
+                </div>
+                <div class="flex gap-6">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" x-model="form.is_global" class="w-4 h-4 bg-[#1a1b26] border tui-border rounded">
+                        <span class="text-sm">Global</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" x-model="form.enabled" class="w-4 h-4 bg-[#1a1b26] border tui-border rounded">
+                        <span class="text-sm">Enabled</span>
+                    </label>
+                </div>
+            </div>
+            <div class="p-4 border-t tui-border flex justify-end gap-3 sticky bottom-0 bg-[#24283b]">
+                <button @click="showModal = false" class="px-4 py-2 rounded font-bold hover:bg-[#1a1b26] transition">Cancelar</button>
+                <button @click="save()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-bold transition">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function mcpsPage() {
+        return {
+            showModal: false,
+            editingMcp: false,
+            mcps: [],
+            form: {
+                id: '',
+                name: '',
+                type: 'stdio',
+                command: '',
+                args: '[]',
+                env: '{}',
+                url: '',
+                is_global: true,
+                enabled: true
+            },
+
+            async init() {
+                await this.refreshMcps();
+            },
+
+            async refreshMcps() {
+                try {
+                    const data = await this.api.listMcps();
+                    this.mcps = data.mcps;
+                    this.$nextTick(() => lucide.createIcons());
+                } catch (e) {
+                    console.error(e);
+                }
+            },
+
+            openCreate() {
+                this.editingMcp = false;
+                this.form = {
+                    id: 'mcp-' + Math.random().toString(36).substr(2, 9),
+                    name: '',
+                    type: 'stdio',
+                    command: '',
+                    args: '[]',
+                    env: '{}',
+                    url: '',
+                    is_global: true,
+                    enabled: true
+                };
+                this.showModal = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            openEdit(mcp) {
+                this.editingMcp = true;
+                this.form = {
+                    ...mcp,
+                    args: JSON.stringify(mcp.args || [], null, 2),
+                    env: JSON.stringify(mcp.env || {}, null, 2)
+                };
+                this.showModal = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            async save() {
+                try {
+                    const data = {
+                        ...this.form,
+                        args: JSON.parse(this.form.args),
+                        env: JSON.parse(this.form.env)
+                    };
+                    await this.api.upsertMcp(data);
+                    this.showModal = false;
+                    await this.refreshMcps();
+                } catch (e) {
+                    alert('Erro ao salvar: ' + e.message);
+                }
+            },
+
+            async confirmDelete(mcp) {
+                if (confirm(`Excluir MCP server ${mcp.name}?`)) {
+                    try {
+                        await this.api.deleteMcp(mcp.id);
+                        await this.refreshMcps();
+                    } catch (e) {
+                        alert('Erro ao excluir: ' + e.message);
+                    }
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

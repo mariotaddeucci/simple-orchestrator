@@ -99,3 +99,14 @@ class TuiSettings(_OrchestratorSettingsBase):
     api_key: str = "change-me"
 
     standalone: bool = True
+
+
+class FrontendSettings(_OrchestratorSettingsBase):
+    logs_dir: Path = get_base_dir() / "logs"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    api_url: str = "http://127.0.0.1:8765"
+    api_key: str = "change-me"
+
+    frontend_host: str = "127.0.0.1"
+    frontend_port: int = 8766
