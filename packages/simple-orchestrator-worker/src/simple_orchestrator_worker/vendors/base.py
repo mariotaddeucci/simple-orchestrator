@@ -37,9 +37,12 @@ class BaseVendor(ABC):
 
     async def _prepare_config(self, config: SessionConfig) -> SessionConfig:
         """Prepare the session configuration by resolving workdir and injecting instructions."""
-        workdir = await anyio.to_thread.run_sync(
-            lambda: resolve_workdir(config.workdir, self._settings.git_cache_dir),
-        ) or tempfile.mkdtemp()
+        workdir = (
+            await anyio.to_thread.run_sync(
+                lambda: resolve_workdir(config.workdir, self._settings.git_cache_dir),
+            )
+            or tempfile.mkdtemp()
+        )
 
         new_values: dict[str, Any] = {"workdir": workdir}
 
@@ -66,7 +69,7 @@ class BaseVendor(ABC):
         """
         session_id = session_id or str(ULID())
         config = await self._prepare_config(config)
-        workdir = config.workdir
+        workdir = config.workdir or tempfile.mkdtemp()
 
         record = SessionRecord(
             id=session_id,
