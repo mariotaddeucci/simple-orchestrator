@@ -93,5 +93,12 @@ def cmd_tui() -> None:
     ).run()
 
 
+@app.command("frontend")
+def cmd_frontend() -> None:
+    """Start the Web Frontend (connects to a running webapi via HTTP)."""
+    frontend_cli = _import_or_exit("simple_orchestrator_frontend.frontend_cli", extra="frontend")
+    frontend_cli.main()
+
+
 def main() -> None:
     app()
