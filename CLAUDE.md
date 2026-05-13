@@ -79,6 +79,7 @@ uv run simple-orchestrator standalone
 uv run simple-orchestrator webapi    # owns the SQLite DB
 uv run simple-orchestrator worker    # connects to webapi via HTTP
 uv run simple-orchestrator tui       # connects to webapi via HTTP
+uv run simple-orchestrator frontend  # connects to webapi via HTTP
 ```
 
 Tests run per package (each has its own `pyproject.toml`):
@@ -114,7 +115,8 @@ See also the `CLAUDE.md` inside each folder under `packages/`:
 | `packages/simple-orchestrator-api-client/` | HTTP client that implements the repository | Keep parity with `webapi` + `core/api.py`; map errors/timeouts/retries. |
 | `packages/simple-orchestrator-worker/` | Queue runner + vendors + event scheduler | Concurrency, cancellation, timeouts, logs; vendor integrations (Claude/OpenCode/Copilot). |
 | `packages/simple-orchestrator-tui/` | Textual terminal interface | UX and flows; consume the repository only (DB direct or HTTP). |
-| `packages/simple-orchestrator/` | CLI entrypoints | Subcommands (`worker`, `webapi`, `tui`), settings wiring, DI. |
+| `packages/simple-orchestrator-frontend/` | Web Dashboard | FastAPI + Jinja2 SSR; real-time monitoring via Alpine.js. |
+| `packages/simple-orchestrator/` | CLI entrypoints | Subcommands (`worker`, `webapi`, `tui`, `frontend`), settings wiring, DI. |
 
 ## Guide maintenance
 

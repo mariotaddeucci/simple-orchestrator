@@ -32,6 +32,7 @@ Designed for pipelines where a "delegator" agent distributes work to specialized
 | **Two execution modes** | Standalone (one command, automatic subprocesses) or distributed (REST API + remote worker). |
 | **Multi-vendor** | Supports `claude_code`, `opencode`, `github_copilot`, and `jules` as backends. |
 | **TUI** | Terminal interface with Queue, Agents, and Events tabs. Queue a task by selecting an agent from the list. |
+| **Web Dashboard** | FastAPI + Jinja2 SSR frontend with Alpine.js for real-time monitoring. |
 | **Agent Skills** | Built-in skills for agents: `memory-tool` (persistent memory), `queue-tasks` (delegation), and `task-executor` (task lifecycle). |
 
 ---
@@ -260,6 +261,7 @@ uv run simple-orchestrator standalone  # TUI + embedded worker, direct SQLite (n
 uv run simple-orchestrator tui         # TUI only — connects to existing webapi via HTTP
 uv run simple-orchestrator webapi      # WebAPI only — owns the SQLite DB
 uv run simple-orchestrator worker      # worker only — connects to webapi via HTTP
+uv run simple-orchestrator frontend    # Web Dashboard only — connects to webapi via HTTP
 ```
 
 ---

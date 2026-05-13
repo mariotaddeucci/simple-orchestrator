@@ -26,6 +26,7 @@ The project is a **UV workspace** with 7 packages. The central principle is sepa
 | `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execution**: task queue, event scheduling, vendors (Claude/OpenCode/Copilot/Jules) |
 | `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **HTTP client**: consumes the REST API; implements `IOrchestratorClient` |
 | `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consumes the REST API via api-client |
+| `simple-orchestrator-frontend` | `simple_orchestrator_frontend` | **Dashboard**: FastAPI/Jinja2 SSR; consumes the REST API via Alpine.js |
 
 ---
 
@@ -84,6 +85,13 @@ TUI and worker communicate with WebAPI via HTTP. Each component runs as an indep
              │  /queue /agents /sessions       │
              │  /mcps /events /health          │
              └──────────────┬──────────────────┘
+                            ▲
+                            │
+             simple-orchestrator-frontend
+             ┌─────────────────────────────────┐
+             │  FastAPI/Jinja2                 │
+             │  Web Dashboard                  │
+             └─────────────────────────────────┘
                             │
              simple-orchestrator-database
              ┌──────────────────────────────┐
@@ -131,6 +139,9 @@ TUI and worker communicate with WebAPI via HTTP. Each component runs as an indep
 
   simple-orchestrator-tui
   └── Textual TUI     Queue / Agents / Events tabs; consumes REST API via api-client
+
+  simple-orchestrator-frontend
+  └── Web Dashboard   FastAPI + Jinja2 SSR; consumes REST API via Alpine.js
 ```
 
 ---
