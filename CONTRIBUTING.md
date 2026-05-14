@@ -13,7 +13,7 @@ uv run prek install       # install git hooks (lint + format + type check on com
 
 ## Architecture
 
-The project is a **UV workspace** with 7 packages. The central principle is separation of contracts (interfaces) from implementation: `simple-orchestrator-core` defines what each component must do; the other packages implement or consume those definitions.
+The project is a **UV workspace** with 8 packages. The central principle is separation of contracts (interfaces) from implementation: `simple-orchestrator-core` defines what each component must do; the other packages implement or consume those definitions.
 
 ### Packages and responsibilities
 
