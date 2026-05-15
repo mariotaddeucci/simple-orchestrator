@@ -5,7 +5,7 @@ Scope: `packages/simple-orchestrator-api-client/`.
 ## Why it exists
 
 - Allow `worker`/`tui` to consume the system over HTTP **without changing consumer code**.
-- Implement the same `IOrchestratorRepository` contract, backed by HTTP calls to `webapi`.
+- Implement the same `IOrchestratorClient` contract, backed by HTTP calls to `webapi`.
 
 ## Main goal
 

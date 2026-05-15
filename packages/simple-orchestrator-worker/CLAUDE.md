@@ -5,7 +5,7 @@ Scope: `packages/simple-orchestrator-worker/`.
 ## Why it exists
 
 - Run the queue (dequeue/dispatch) with controlled parallelism.
-- Implement vendors (Claude Code, OpenCode, GitHub Copilot) and the session lifecycle.
+- Implement vendors (Claude Code, OpenCode, GitHub Copilot, Jules) and the session lifecycle.
 - Run the event scheduler loop that fires due events and updates `next_run`.
 
 ## Main goal
@@ -43,6 +43,8 @@ Robust execution: concurrency, per-`workdir` serialization, cancellation, timeou
 
 ```python
 run(config: SessionConfig, timeout_minutes: float, session_id: str) -> (session_id, final_status)
+execute_session(config: SessionConfig) -> AsyncIterator[Any]
+prepare_and_execute(config: SessionConfig) -> AsyncIterator[Any]
 _run_session(session_id, config)   # abstract — vendor-specific blocking execution
 _vendor_kill(session_id)           # abstract — best-effort termination
 list_models() -> list[ModelInfo]
@@ -52,6 +54,7 @@ Vendor-specific code stays in `vendors/` — never spread vendor details into `w
 
 ## Concurrency rules
 
+- `always_open_pr` (default True) — if the workdir is a git worktree, the worker appends an instruction to open a PR at the end of the prompt.
 - `max_active_sessions` caps how many vendor sessions run in parallel.
 - Sessions are serialized per resolved workdir (git remote → `~/simple-orchestrator/git/<hash>`; null → per-task temp dir) to avoid conflicts.
 - Cancellation is best-effort via `_vendor_kill(session_id)`.

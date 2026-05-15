@@ -26,7 +26,7 @@ Evolve schemas carefully — changes here ripple into `database`, `webapi`, `api
 | `src/simple_orchestrator_core/interfaces.py` | Repository Protocols (see below) |
 | `src/simple_orchestrator_core/models/` | Domain models (SQLModel + plain Pydantic) |
 | `src/simple_orchestrator_core/api.py` | REST request/response shapes + `auth_headers()` |
-| `src/simple_orchestrator_core/settings.py` | `WebApiSettings`, `WorkerSettings`, `TuiSettings` |
+| `src/simple_orchestrator_core/settings.py` | `WebApiSettings`, `WorkerSettings`, `TuiSettings`, `FrontendSettings` |
 | `src/simple_orchestrator_core/validators.py` | Shared validation helpers |
 | `src/simple_orchestrator_core/vendor_selector.py` | Parses `"vendor/model"` strings |
 | `src/simple_orchestrator_core/mcp_inputs.py` | MCP server configuration helpers |
@@ -121,6 +121,7 @@ class IOrchestratorClient(Protocol):
 | `heartbeat_interval_seconds` | `WorkerSettings` | `10.0` |
 | `worker_id` | `WorkerSettings` | auto ULID at startup |
 | `standalone` | `TuiSettings` | `True` |
+| `frontend_host` / `frontend_port` | `FrontendSettings` | `127.0.0.1:8766` |
 
 ## Quick validation
 

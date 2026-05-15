@@ -26,8 +26,9 @@ Ensure CLI invocations correctly configure settings, the repository (SQLite dire
 | `simple-orchestrator webapi` | Distributed | FastAPI REST server — owns the SQLite DB |
 | `simple-orchestrator worker` | Distributed | Worker process — connects to running webapi via HTTP |
 | `simple-orchestrator tui` | Distributed | TUI only — connects to running webapi via HTTP |
+| `simple-orchestrator frontend` | Distributed | Web Dashboard only — connects to running webapi via HTTP |
 
-Calling individual services (`webapi`, `worker`, `tui`) is the **distributed** mode — each process is separate and communicates via HTTP. Call `standalone` when you want everything in one process.
+Calling individual services (`webapi`, `worker`, `tui`, `frontend`) is the **distributed** mode — each process is separate and communicates via HTTP. Call `standalone` when you want everything in one process.
 
 Imports are lazy (`_import_or_exit(module, extra)`) so missing optional deps give a clear error at runtime.
 
