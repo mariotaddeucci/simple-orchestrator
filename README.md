@@ -92,13 +92,13 @@ The integration tests validate the system in different modes (standalone, distri
 **Standalone integration tests:**
 
 ```bash
-uv run pytest tests/integration/standalone
+uv run pytest tests/integration/test_api_standalone.py
 ```
 
 **Distributed integration tests:**
 
 ```bash
-uv run pytest tests/integration/distributed
+uv run pytest tests/integration/test_api_distributed.py
 ```
 
 **Vendor integration tests (incur API costs):**

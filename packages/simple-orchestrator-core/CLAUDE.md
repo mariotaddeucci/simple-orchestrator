@@ -60,31 +60,31 @@ Single async contract satisfied by **both** `OrchestratorApiClient` (HTTP → we
 
 ```python
 class IOrchestratorClient(Protocol):
-    async def send_heartbeat(heartbeat: WorkerHeartbeat) -> None
-    async def list_agents() -> list[AgentRecord]
-    async def get_agent(agent_id: str) -> AgentRecord
-    async def upsert_agent(req: AgentUpsertRequest) -> AgentRecord
-    async def delete_agent(agent_id: str) -> None
-    async def enqueue(req: EnqueueRequest) -> QueueItem
-    async def list_queue(*, status, agent_id) -> list[QueueItem]
-    async def get_queue_item(item_id: str) -> QueueItem
-    async def update_queue_item(item_id, req: QueueUpdateRequest) -> QueueItem
-    async def cancel(item_id: str) -> None
-    async def dequeue_next() -> QueueDequeueResponse | None
-    async def create_session(req: SessionCreateRequest) -> None
-    async def update_session(session_id, req: SessionUpdateRequest) -> None
-    async def list_sessions(*, vendor, status) -> list[SessionRecord]
-    async def get_session(session_id: str) -> SessionRecord
-    async def list_mcps(*, is_global, enabled) -> list[McpRecord]
-    async def get_mcp(mcp_id: str) -> McpRecord
-    async def upsert_mcp(req: McpCreateRequest) -> McpRecord
-    async def delete_mcp(mcp_id: str) -> None
-    async def list_events(*, enabled) -> list[EventRecord]
-    async def get_event(event_id: str) -> EventRecord
-    async def create_event(req: EventCreateRequest) -> EventRecord
-    async def update_event(event_id, req: EventUpdateRequest) -> EventRecord
-    async def delete_event(event_id: str) -> None
-    async def trigger_event(event_id: str) -> QueueItem
+    async def send_heartbeat(self, heartbeat: WorkerHeartbeat) -> None
+    async def list_agents(self) -> list[AgentRecord]
+    async def get_agent(self, agent_id: str) -> AgentRecord
+    async def upsert_agent(self, req: AgentUpsertRequest) -> AgentRecord
+    async def delete_agent(self, agent_id: str) -> None
+    async def enqueue(self, req: EnqueueRequest) -> QueueItem
+    async def list_queue(self, *, status: str | None = None, agent_id: str | None = None) -> list[QueueItem]
+    async def get_queue_item(self, item_id: str) -> QueueItem
+    async def update_queue_item(self, item_id: str, req: QueueUpdateRequest) -> QueueItem
+    async def cancel(self, item_id: str) -> None
+    async def dequeue_next(self) -> QueueDequeueResponse | None
+    async def create_session(self, req: SessionCreateRequest) -> None
+    async def update_session(self, session_id: str, req: SessionUpdateRequest) -> None
+    async def list_sessions(self, *, vendor: str | None = None, status: str | None = None) -> list[SessionRecord]
+    async def get_session(self, session_id: str) -> SessionRecord
+    async def list_mcps(self, *, is_global: bool | None = None, enabled: bool | None = None) -> list[McpRecord]
+    async def get_mcp(self, mcp_id: str) -> McpRecord
+    async def upsert_mcp(self, req: McpCreateRequest) -> McpRecord
+    async def delete_mcp(self, mcp_id: str) -> None
+    async def list_events(self, *, enabled: bool | None = None) -> list[EventRecord]
+    async def get_event(self, event_id: str) -> EventRecord
+    async def create_event(self, req: EventCreateRequest) -> EventRecord
+    async def update_event(self, event_id: str, req: EventUpdateRequest) -> EventRecord
+    async def delete_event(self, event_id: str) -> None
+    async def trigger_event(self, event_id: str) -> QueueItem
 ```
 
 **Rule**: never add `OrchestratorApiClient` or `StandaloneClient` as a type annotation outside their own packages. Always use `IOrchestratorClient`.

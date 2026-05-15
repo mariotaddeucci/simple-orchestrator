@@ -4,7 +4,7 @@ Scope: `packages/simple-orchestrator-frontend/`.
 
 ## Why it exists
 
-- Provide a visual dashboard for real-time monitoring of agents, queue, and events.
+- Provide a visual dashboard for real-time monitoring of agents, queue, MCPs, and events.
 - Implement a "no-build" architecture for easy deployment and rapid prototyping.
 
 ## Main goal
@@ -17,7 +17,7 @@ Fast, reactive, and low-maintenance web interface for the orchestrator.
 |---|---|
 | `src/simple_orchestrator_frontend/app.py` | FastAPI server with Jinja2 SSR routes |
 | `src/simple_orchestrator_frontend/frontend_cli.py` | CLI entry point (`uvicorn` startup) |
-| `src/simple_orchestrator_frontend/templates/` | Jinja2 templates (HTML) |
+| `src/simple_orchestrator_frontend/templates/` | Jinja2 templates (`index`, `agents`, `mcps`, `events`) |
 | `src/simple_orchestrator_frontend/static/js/api.js` | JS client for Web API interactions |
 
 ## Architecture ("No-Build")
