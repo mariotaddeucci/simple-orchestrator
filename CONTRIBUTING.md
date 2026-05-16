@@ -26,7 +26,7 @@ The project is a **UV workspace** with 8 packages. The central principle is sepa
 | `simple-orchestrator-worker` | `simple_orchestrator_worker` | **Execution**: task queue, event scheduling, vendors (Claude/OpenCode/Copilot/Jules) |
 | `simple-orchestrator-api-client` | `simple_orchestrator_api_client` | **HTTP client**: consumes the REST API; implements `IOrchestratorClient` |
 | `simple-orchestrator-tui` | `simple_orchestrator_tui` | **Interface**: Textual TUI; consumes the REST API via api-client |
-| `simple-orchestrator-frontend` | `simple_orchestrator_frontend` | **Dashboard**: FastAPI/Jinja2 SSR; consumes the REST API via Alpine.js |
+| `simple-orchestrator-frontend` | `simple_orchestrator_frontend` | **Dashboard**: FastAPI/Jinja2 SSR; consumes the REST API via Alpine.js (no-build architecture) |
 
 ---
 
@@ -45,7 +45,8 @@ In standalone mode (`simple-orchestrator standalone`), TUI and worker share one 
   │  │  Queue tab   │                                         │
   │  │  Agents tab  │◄──────────────────────┐                 │
   │  │  Events tab  │                       │                 │
-  │  └──────────────┘                       │ StandaloneClient│
+  │  │  MCPs tab    │                       │ StandaloneClient│
+  │  └──────────────┘                       │                 │
   │                                         │                 │
   │  WorkerRunner (@work background task)   │ OrchestratorDB  │
   │  ┌──────────────┐       ┌───────────────▼──────────────┐  │

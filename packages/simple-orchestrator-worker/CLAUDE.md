@@ -59,6 +59,10 @@ Vendor-specific code stays in `vendors/` — never spread vendor details into `w
 - Sessions are serialized per resolved workdir (git remote → `~/simple-orchestrator/git/<hash>`; null → per-task temp dir) to avoid conflicts.
 - Cancellation is best-effort via `_vendor_kill(session_id)`.
 
+## Working with Workdirs
+
+Use `resolve_workdir(workdir, cache_base)` from `workdir.py` to handle git cloning and cache path resolution. It requires an explicit `cache_base: Path`.
+
 ## Testing
 
 Integration tests that require real vendor authentication must be marked/auto-skipped in CI.

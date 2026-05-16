@@ -40,6 +40,10 @@ Imports are lazy (`_import_or_exit(module, extra)`) so missing optional deps giv
 
 Both clients satisfy `IOrchestratorClient` — consumers are never typed against a concrete class.
 
+## Standalone Setup
+
+`StandaloneClient` and `StandaloneSessionStore` allow direct database access within the same process. Use `StandaloneClient` for UI/API tasks and `StandaloneSessionStore` for worker persistence.
+
 ## Development rules
 
 - Keep subcommand handlers minimal: parse args, load settings, call the package's entry function.

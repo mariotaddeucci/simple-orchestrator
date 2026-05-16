@@ -32,7 +32,7 @@ Designed for pipelines where a "delegator" agent distributes work to specialized
 | **Two execution modes** | Standalone (one command, automatic subprocesses) or distributed (REST API + remote worker). |
 | **Multi-vendor** | Supports `claude_code`, `opencode`, `github_copilot`, and `jules` as backends. |
 | **TUI** | Terminal interface with Queue, Agents, and Events tabs. Queue a task by selecting an agent from the list. |
-| **Web Dashboard** | FastAPI + Jinja2 SSR frontend with Alpine.js for real-time monitoring. |
+**Web Dashboard** | FastAPI + Jinja2 SSR dashboard with Alpine.js for real-time monitoring ("no-build" architecture). |
 | **Agent Skills** | Built-in skills for agents: `memory-tool` (persistent memory), `queue-tasks` (delegation), and `task-executor` (task lifecycle). |
 
 ---
@@ -47,7 +47,7 @@ pip install simple-orchestrator
 git clone https://github.com/mariotaddeucci/simple-orchestrator
 cd simple-orchestrator
 uv sync --frozen
-uv run prek install   # install git hooks
+uv run prek install   # install git hooks (lint + format + type check)
 ```
 
 ---
@@ -194,7 +194,8 @@ curl -X POST http://localhost:8765/events \
     "agent_id": "reviewer",
     "prompt": "Review recent changes and report issues.",
     "schedule_type": "interval",
-    "interval_minutes": 30
+    "interval_minutes": 30,
+    "enabled": true
   }'
 
 # Cron: every day at 9am
@@ -206,7 +207,8 @@ curl -X POST http://localhost:8765/events \
     "agent_id": "reviewer",
     "prompt": "Generate the daily report.",
     "schedule_type": "cron",
-    "cron_expression": "0 9 * * *"
+    "cron_expression": "0 9 * * *",
+    "enabled": true
   }'
 ```
 
@@ -219,8 +221,8 @@ curl -X POST http://localhost:8765/events \
 max_active_sessions = 4   # max simultaneous sessions (global)
 ```
 
-Tasks targeting the same `workdir` are serialized automatically by the worker.
-Per-agent timeout is configured in the `task_timeout_minutes` field when creating the agent.
+Tasks targeting the same `workdir` (git remote URL or local path) are serialized automatically by the worker.
+Per-agent timeout is configured in the `task_timeout_minutes` field when creating the agent. If the `workdir` is a git repository, the worker can automatically append a "please open a PR" instruction (configurable via `always_open_pr`).
 
 ---
 
@@ -251,6 +253,10 @@ class MyVendor(BaseVendor):
     async def _vendor_kill(self, session_id: str) -> None:
         pass
 ```
+
+### Jules (Cloud Agent) Vendor
+
+Requires `JULES_API_URL` and `JULES_API_KEY` environment variables.
 
 ---
 

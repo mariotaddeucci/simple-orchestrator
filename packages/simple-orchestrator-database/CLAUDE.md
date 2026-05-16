@@ -44,6 +44,7 @@ Correct persistence: atomicity (claim/dequeue), consistent status transitions, a
 - Schema/query changes must align with `core` model updates.
 - Keep `depends_on` checking and `dequeue_next()` atomic to avoid double-dispatch under concurrent workers.
 - Boolean column filters should be done in Python (post-fetch) to avoid SQLModel `Literal` type issues.
+- `SessionRecord.workdir` is non-nullable; ensure a valid path string is provided when creating records.
 
 ## Quick validation
 

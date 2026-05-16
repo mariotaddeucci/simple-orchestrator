@@ -151,6 +151,13 @@ Two log streams — import the right one per module:
 
 `DEBUG` mode adds `[filename.py:line]` to every log line.
 
+### Working with directories
+
+Default base directory is `~/simple-orchestrator/`.
+- `/logs` — internal and vendor logs.
+- `/git` — cached git clones for task execution.
+- `orchestrator.db` — SQLite database.
+
 ---
 
 ## Vendor-specific notes
