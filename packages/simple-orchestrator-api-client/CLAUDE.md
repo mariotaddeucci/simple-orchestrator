@@ -25,6 +25,7 @@ Parity: endpoint/shape changes in `webapi` must be reflected here and in `core/a
 - Respect settings: `api_url`, `api_key`, request timeouts.
 - Every new endpoint added to `webapi` needs a corresponding method here.
 - Do not add caching or local state — the server is the source of truth.
+- When sending Pydantic models via `model_dump_json()`, explicitly set the `Content-Type: application/json` header to ensure proper deserialization by the Web API.
 
 ## Quick validation
 

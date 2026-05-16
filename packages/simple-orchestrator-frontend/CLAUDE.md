@@ -23,7 +23,7 @@ Fast, reactive, and low-maintenance web interface for the orchestrator.
 ## Architecture ("No-Build")
 
 - **Tailwind CSS**: Utility-first CSS, loaded via CDN.
-- **Alpine.js**: Lightweight reativity, loaded via CDN. Global store `Alpine.store('app')` in `base.html` manages state.
+- **Alpine.js**: Lightweight reactivity, loaded via CDN. Global store `Alpine.store('app')` in `base.html` manages state.
 - **Lucide Icons**: Icon set, loaded via CDN.
 - **Jinja2**: Server-side rendering for the initial page load and structure.
 
