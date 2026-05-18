@@ -23,7 +23,7 @@ _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
 def get_base_dir() -> Path:
     try:
         return Path.home() / "simple-orchestrator"
-    except RuntimeError, OSError:
+    except (RuntimeError, OSError):
         return Path(tempfile.gettempdir()) / "simple-orchestrator"
 
 
@@ -102,9 +102,6 @@ class TuiSettings(_OrchestratorSettingsBase):
 
 
 class FrontendSettings(_OrchestratorSettingsBase):
-    logs_dir: Path = get_base_dir() / "logs"
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-
     api_url: str = "http://127.0.0.1:8765"
     api_key: str = "change-me"
 

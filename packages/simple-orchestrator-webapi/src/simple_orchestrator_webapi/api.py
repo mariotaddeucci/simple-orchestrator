@@ -39,8 +39,9 @@ from simple_orchestrator_core.schedule import compute_next_run
 from simple_orchestrator_core.settings import WebApiSettings
 from simple_orchestrator_database import OrchestratorDB
 
+from simple_orchestrator_core.session_config_builder import build_session_config
+
 from .logging_config import get_internal_logger, setup_logging
-from .session_config_builder import build_session_config
 
 logger = get_internal_logger(__name__)
 
