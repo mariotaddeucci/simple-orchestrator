@@ -69,7 +69,8 @@ class BaseVendor(ABC):
         """
         session_id = session_id or str(ULID())
         config = await self._prepare_config(config)
-        workdir = config.workdir or tempfile.mkdtemp()
+        workdir = config.workdir
+        assert workdir is not None
 
         record = SessionRecord(
             id=session_id,
