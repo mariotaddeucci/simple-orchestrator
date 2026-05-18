@@ -58,6 +58,7 @@ Vendor-specific code stays in `vendors/` — never spread vendor details into `w
 - `max_active_sessions` caps how many vendor sessions run in parallel.
 - Sessions are serialized per resolved workdir (git remote → `~/simple-orchestrator/git/<hash>`; null → per-task temp dir) to avoid conflicts.
 - Cancellation is best-effort via `_vendor_kill(session_id)`.
+- **Note**: The `memory-tool` skill is currently non-functional in distributed mode because `IOrchestratorClient` and the Web API lack the necessary memory management methods.
 
 ## Working with Workdirs
 
