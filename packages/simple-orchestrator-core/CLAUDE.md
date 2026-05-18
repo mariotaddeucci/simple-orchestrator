@@ -87,6 +87,8 @@ class IOrchestratorClient(Protocol):
     async def trigger_event(event_id: str) -> QueueItem
 ```
 
+**Note**: `IOrchestratorClient` currently lacks methods for memory management (`save_memory`, etc.), even though `IMemoryRepository` supports them. This means the `memory-tool` skill is currently non-functional in distributed mode.
+
 **Rule**: never add `OrchestratorApiClient` or `StandaloneClient` as a type annotation outside their own packages. Always use `IOrchestratorClient`.
 
 ## Domain models

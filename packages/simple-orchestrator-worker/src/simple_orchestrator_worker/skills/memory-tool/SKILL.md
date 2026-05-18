@@ -2,6 +2,8 @@
 
 Use this skill to persist context, state, or notes between agent executions via the orchestrator's memory tools.
 
+**Note**: This skill currently only works in **standalone mode**. It is non-functional in distributed mode because the necessary memory management methods are missing from the REST API and the async client.
+
 ## Why use memory?
 
 Each agent session starts fresh. Memories let an agent remember what it learned or produced in earlier runs — useful for incremental work, resumable pipelines, and sharing context between agents.

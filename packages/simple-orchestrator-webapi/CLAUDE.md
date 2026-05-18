@@ -63,6 +63,8 @@ Maintain parity with `simple-orchestrator-core/src/.../api.py` and `api-client`.
 - `session_config_builder.py` merges `AgentRecord` + `QueueItem` into a `SessionConfig` — update it when new agent fields are added.
 - **Important**: When receiving a Pydantic model that wraps a SQLModel entity (e.g., `SessionCreateRequest` wrapping `SessionRecord`), use `Entity.model_validate(req.entity.model_dump())` to ensure proper type conversion (especially for `datetime` fields) before persistence.
 
+**Note**: Memory REST endpoints (for `IMemoryRepository`) are currently missing in the Web API.
+
 ## Quick validation
 
 ```bash
