@@ -23,7 +23,7 @@ _TOML_FILE_ENV = "ORCHESTRATOR_TOML_FILE"
 def get_base_dir() -> Path:
     try:
         return Path.home() / "simple-orchestrator"
-    except (RuntimeError, OSError):
+    except RuntimeError, OSError:
         return Path(tempfile.gettempdir()) / "simple-orchestrator"
 
 
